@@ -98,7 +98,7 @@ This will create 100 batch folders in the `..._split` directory.
 
 - **Run all batches at once**:
   ```bash
-  bp batch run
+  bp batch run -b /mnt/exacloud/your_folder/Alaska/tilename/ssp1_2_6_access_cm2__ssp1_2_6_split`
   ```
 
 - **Run a single batch**:
