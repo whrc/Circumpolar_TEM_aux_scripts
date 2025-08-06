@@ -38,7 +38,9 @@ This document outlines the workflow for processing Alaska tiles as part of the C
    /mnt/exacloud/<yourname>_woodwellclimate_org/Alaska
    ```
    Copy your assigned tiles into this folder and navigate into the working tile directory.
-
+   ```bash
+   gsutil -m  cp -r gs://regionalinputs/CIRCUMPOLAR/<tile_name>
+   ```
 ---
 
 ## Workflow Steps
