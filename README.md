@@ -116,6 +116,7 @@ Use `squeue` or `sacct` to monitor job progress:
 ```bash
 squeue -u $USER
 sacct -j <job_id>
+python check_runs.py ssp1_2_6_access_cm2__ssp1_2_6_split
 ```
 
 > An auxiliary monitoring script will be added to this repo soon.
