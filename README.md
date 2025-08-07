@@ -55,6 +55,7 @@ python process_climate_data_gapfill.py /path/to/tile
 
 > **Note**: You may need to rename the gap-filled output file (this step will be improved in future versions).
 
+It could be worse to check the `run-mask.nc` file in the tile. If all zeros, it means that all gridcells are off.   
 ---
 
 ### 2. Analyze Input Data
