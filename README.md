@@ -135,9 +135,30 @@ bp batch merge -b <tile_name>
 
 ### 8. Plotting Results
 
-Plotting scripts are currently under development by Doğukan. This section will be updated once the plotting tool is finalized.
+Once all batches are merged, run the plotting script.
+
+```bash
+python plot_nc_all_files.py full_path_your_tile/ssp1_2_6_access_cm2__ssp1_2_6_split/all_merged/
+```
 
 ---
+
+## Stage II: New scenario: ssp1_2_6_mri_esm2_0__ssp1_2_6
+
+Once Stage I is complete, we can proceed to the next scenario.  
+For this stage, there is **no need** to re-run the `-pr`, `-eq`, or `sp` phases.  
+Instead, we will use the script below to:  
+
+1. Copy the `restart-tr.nc` file into each batch directory.  
+2. Modify the Slurm job script in each batch to enable a restart run.  
+
+Before running this script, the new scenario must first be split into batches — see [Step 4](#4-split-scenarios-into-batches) for details.  
+
+```bash
+python generate_next_scenario.py path_to_scenario/ssp1_2_6_access_cm2__ssp1_2_6_split path_to_next_scenario/..._split
+```
+
+After completing this step, repeat Steps 5 through 8 from Stage I.
 
 ## Notes
 
