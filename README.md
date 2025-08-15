@@ -1,4 +1,4 @@
-EDA tools for the DVM-DOS-TEM Circumpolar run. 
+Tools for the DVM-DOS-TEM Circumpolar run input/output data processing. 
 
 # Circumpolar Run Work Plan
 
@@ -6,7 +6,7 @@ EDA tools for the DVM-DOS-TEM Circumpolar run.
 
 ![Map of the Circumpolar](circ_map_ids.jpg)
 
-## Stage I: Alaska Tiles
+## Stage I: Alaska Tiles [constant OLT]
 
 This document outlines the workflow for processing Alaska tiles as part of the Circumpolar run.
 
@@ -188,7 +188,7 @@ After completing this step, repeat Steps **5** through **8** from **Stage I**.
 The following command automates splitting and file copying steps for all scenarios. Keep this script in the folder above the scenario folder. 
 ```bash
 python orchestrate_scenarios.py --path-to-folder /mnt/exacloud/ejafarov_woodwellclimate_org/Alaska/ \
---tile-dir H10_V14_sc --new-scenario-script generate_next_scenario.p
+--tile-dir H10_V14_sc --new-scenario-script generate_next_scenario.py
 ```
 
 ## Notes
