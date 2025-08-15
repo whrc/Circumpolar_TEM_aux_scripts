@@ -146,7 +146,7 @@ python plot_nc_all_files.py full_path_your_tile/ssp1_2_6_access_cm2__ssp1_2_6_sp
 ## Stage II: New scenario: ssp1_2_6_mri_esm2_0__ssp1_2_6
 
 Once Stage I is complete, we can proceed to the next scenario.  
-For this stage, there is **no need** to re-run the `-pr`, `-eq`, or `sp` phases.  
+For this stage, there is **no need** to re-run the `-pr`, `-eq`, or `-sp` phases.  
 Instead, we will use the script below to:  
 
 1. Copy the `restart-tr.nc` file into each batch directory.  
@@ -158,7 +158,7 @@ Before running this script, the new scenario must first be split into batches â€
 python generate_next_scenario.py path_to_scenario/ssp1_2_6_access_cm2__ssp1_2_6_split path_to_next_scenario/..._split
 ```
 
-After completing this step, repeat Steps 5 through 8 from Stage I.
+After completing this step, repeat Steps **5** through **8** from **Stage I**.
 
 ## Notes
 
@@ -169,7 +169,7 @@ After completing this step, repeat Steps 5 through 8 from Stage I.
 
 ## To Do
 
-- [ ] Add monitoring script
-- [ ] Finalize plotting script
-- [ ] Automate renaming of gap-filled files
-
+- [x] Add monitoring script
+- [x] Finalize plotting script
+- [x] Automate renaming of gap-filled files
+- [ ] Automate new scenario generation and job submission script
