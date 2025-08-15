@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""
+Usage:
+  python new_scenario.py /path/to/folder1 /path/to/folder2
+
+Does two things for each subfolder under folder1 (e.g., batch_0, batch_1, ...):
+1) Copies all *_sp.nc from folder1/<batch>/output/ -> folder2/<batch>/output/
+2) In folder2/<batch>/slurm_runner.sh, inserts '--no-output-cleanup --restart-run'
+   immediately after '-l disabled' (idempotent: won’t duplicate if already present)
+"""
+
+import argparse
+import shutil
+from pathlib import Path
+
+def insert_flags_after_disabled(line: str) -> str:
+    """
+    Insert '--no-output-cleanup --restart-run' immediately after '-l disabled'
+    without duplicating flags if they already exist.
+    """
+    if "-l disabled" not in line:
+        return line
+
+    to_add = []
+    if "--no-output-cleanup" not in line:
+        to_add.append("--no-output-cleanup")
+    if "--restart-run" not in line:
+        to_add.append("--restart-run")
+
+    if not to_add:
+        return line  # nothing missing
+
+    key = "-l disabled"
+    idx = line.find(key)
+    before = line[: idx + len(key)]
+    after = line[idx + len(key):]
+    insertion = " " + " ".join(to_add)
+
+    return before + insertion + after
+
+#def copy_sp_files(src_output: Path, dst_output: Path):
+#    if not src_output.exists():
+#        print(f"[SKIP] Source output folder not found: {src_output}")
+#        return
+#    dst_output.mkdir(parents=True, exist_ok=True)
+#    copied_any = False
+#    for sp_file in src_output.glob("*_sp.nc"):
+#        shutil.copy2(sp_file, dst_output / sp_file.name)
+#        print(f"[COPY] {sp_file} -> {dst_output / sp_file.name}")
+#        copied_any = True
+#    if not copied_any:
+#        print(f"[INFO] No *_sp.nc files in {src_output}")
+
+def copy_restart_sp_file(src_output: Path, dst_output: Path):
+    """
+    Copies only restart-sp.nc from src_output to dst_output.
+    """
+    if not src_output.exists():
+        print(f"[SKIP] Source output folder not found: {src_output}")
+        return
+
+    dst_output.mkdir(parents=True, exist_ok=True)
+    src_file = src_output / "restart-tr.nc"
+
+    if src_file.exists():
+        shutil.copy2(src_file, dst_output / src_file.name)
+        print(f"[COPY] {src_file} -> {dst_output / src_file.name}")
+    else:
+        print(f"[INFO] restart-tr.nc not found in {src_output}")
+
+
+
+def modify_slurm(slurm_path: Path):
+    if not slurm_path.exists():
+        print(f"[SKIP] slurm_runner.sh not found: {slurm_path}")
+        return
+
+    with open(slurm_path, "r") as f:
+        lines = f.readlines()
+
+    changed = False
+    new_lines = []
+    for line in lines:
+        if "mpirun" in line and "dvmdostem" in line and "-l disabled" in line:
+            new_line = insert_flags_after_disabled(line)
+            if new_line != line:
+                changed = True
+            new_lines.append(new_line)
+        else:
+            new_lines.append(line)
+
+    if changed:
+        with open(slurm_path, "w") as f:
+            f.writelines(new_lines)
+        print(f"[EDIT] {slurm_path} (inserted flags after '-l disabled')")
+    else:
+        print(f"[OK]   {slurm_path} (no changes needed)")
+
+def main():
+    parser = argparse.ArgumentParser(description="Sync *_sp.nc and edit slurm_runner.sh lines.")
+    parser.add_argument("folder1", type=Path, help="Source parent folder with batch_* subfolders")
+    parser.add_argument("folder2", type=Path, help="Destination parent folder with batch_* subfolders")
+    args = parser.parse_args()
+
+    folder1 = args.folder1
+    folder2 = args.folder2
+
+    if not folder1.exists():
+        raise SystemExit(f"[ERROR] folder1 does not exist: {folder1}")
+    if not folder2.exists():
+        raise SystemExit(f"[ERROR] folder2 does not exist: {folder2}")
+
+    # Iterate over all subfolders in folder1 (e.g., batch_0, batch_1, ...)
+    batch_dirs = sorted([p for p in folder1.iterdir() if p.is_dir()])
+    if not batch_dirs:
+        print(f"[WARN] No subfolders found in {folder1}")
+
+    for batch_src in batch_dirs:
+        batch_name = batch_src.name
+        batch_dst = folder2 / batch_name
+
+        # Step 1: copy *_sp.nc
+        copy_restart_sp_file(batch_src / "output", batch_dst / "output")
+
+        # Step 2: modify slurm_runner.sh
+        modify_slurm(batch_dst / "slurm_runner.sh")
+
+if __name__ == "__main__":
+    main()
+
