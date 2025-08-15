@@ -2,13 +2,17 @@ EDA tools for the DVM-DOS-TEM Circumpolar run.
 
 # Circumpolar Run Work Plan
 
+## The map of the Circumpolar
+
+![Map of the Circumpolar](circ_map_ids.jpg)
+
 ## Stage I: Alaska Tiles
 
 This document outlines the workflow for processing Alaska tiles as part of the Circumpolar run.
 
 ---
 
-## Tile Workload Assignment
+## Initial Tile Workload Assignment
 
 | Elchin       | Valeria      | Doğukan     |
 |--------------|--------------|-------------|
@@ -24,6 +28,27 @@ This document outlines the workflow for processing Alaska tiles as part of the C
 | H11_V17      | H7_V15       | H9_V18      |
 | H11_V18      | H7_V16       | H9_V19      |
 | H11_V19      |              |             |
+
+## After Tile Analysis
+Removed tiles with run-status = 0 for all grid cells. 
+
+## Tile Workload Assignment
+
+| Elchin       | Valeria      | Doğukan     |
+|--------------|--------------|-------------|
+| H10_V14      |              | H8_V14      |
+| H10_V15      |              | H8_V15      |
+| H10_V16      |              | H8_V16      |
+| H10_V17      |              | H8_V17      |
+| H10_V18      |              | H8_V18      |
+| H10_V19      | H5_V15       | H9_V14      |
+| H11_V14      | H5_V16       | H9_V15      |
+| H11_V15      | H6_V15       | H9_V16      |
+| H11_V16      | H6_V16       | H9_V17      |
+| H11_V17      | H7_V15       | H9_V18      |
+| H11_V18      | H7_V16       | H9_V19      |
+|              |              |             |
+
 
 ---
 
@@ -159,6 +184,12 @@ python generate_next_scenario.py path_to_scenario/ssp1_2_6_access_cm2__ssp1_2_6_
 ```
 
 After completing this step, repeat Steps **5** through **8** from **Stage I**.
+
+The following command automates splitting and file copying steps for all scenarios. Keep this script in the folder above the scenario folder. 
+```bash
+python orchestrate_scenarios.py --path-to-folder /mnt/exacloud/ejafarov_woodwellclimate_org/Alaska/ \
+--tile-dir H10_V14_sc --new-scenario-script generate_next_scenario.p
+```
 
 ## Notes
 
