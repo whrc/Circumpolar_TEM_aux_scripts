@@ -4,7 +4,7 @@ Usage:
   python new_scenario.py /path/to/folder1 /path/to/folder2
 
 Does two things for each subfolder under folder1 (e.g., batch_0, batch_1, ...):
-1) Copies all *_sp.nc from folder1/<batch>/output/ -> folder2/<batch>/output/
+1) Copies restart_tr.nc from folder1/<batch>/output/ -> folder2/<batch>/output/
 2) In folder2/<batch>/slurm_runner.sh, inserts '--no-output-cleanup --restart-run'
    immediately after '-l disabled' (idempotent: won’t duplicate if already present)
 """
@@ -38,18 +38,6 @@ def insert_flags_after_disabled(line: str) -> str:
 
     return before + insertion + after
 
-#def copy_sp_files(src_output: Path, dst_output: Path):
-#    if not src_output.exists():
-#        print(f"[SKIP] Source output folder not found: {src_output}")
-#        return
-#    dst_output.mkdir(parents=True, exist_ok=True)
-#    copied_any = False
-#    for sp_file in src_output.glob("*_sp.nc"):
-#        shutil.copy2(sp_file, dst_output / sp_file.name)
-#        print(f"[COPY] {sp_file} -> {dst_output / sp_file.name}")
-#        copied_any = True
-#    if not copied_any:
-#        print(f"[INFO] No *_sp.nc files in {src_output}")
 
 def copy_restart_sp_file(src_output: Path, dst_output: Path):
     """
@@ -68,7 +56,16 @@ def copy_restart_sp_file(src_output: Path, dst_output: Path):
     else:
         print(f"[INFO] restart-tr.nc not found in {src_output}")
 
+#----
 
+def insert_flags_after_disabled(line: str) -> str:
+    # Insert '--no-output-cleanup --restart-run' after '-l disabled'
+    parts = line.split()
+    if "-l" in parts and "disabled" in parts:
+        idx = parts.index("disabled")
+        parts.insert(idx + 1, "--no-output-cleanup")
+        parts.insert(idx + 2, "--restart-run")
+    return " ".join(parts) + "\n"
 
 def modify_slurm(slurm_path: Path):
     if not slurm_path.exists():
@@ -82,7 +79,15 @@ def modify_slurm(slurm_path: Path):
     new_lines = []
     for line in lines:
         if "mpirun" in line and "dvmdostem" in line and "-l disabled" in line:
+            # Insert flags
             new_line = insert_flags_after_disabled(line)
+
+            # Replace parameter set
+            new_line = new_line.replace(
+                "-p 100 -e 2000 -s 200 -t 123 -n 76",
+                "-p 0 -e 0 -s 0 -t 123 -n 76"
+            )
+
             if new_line != line:
                 changed = True
             new_lines.append(new_line)
@@ -92,9 +97,12 @@ def modify_slurm(slurm_path: Path):
     if changed:
         with open(slurm_path, "w") as f:
             f.writelines(new_lines)
-        print(f"[EDIT] {slurm_path} (inserted flags after '-l disabled')")
+        print(f"[EDIT] {slurm_path} (inserted flags and changed params)")
     else:
         print(f"[OK]   {slurm_path} (no changes needed)")
+
+
+#-------
 
 def main():
     parser = argparse.ArgumentParser(description="Sync *_sp.nc and edit slurm_runner.sh lines.")
