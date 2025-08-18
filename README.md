@@ -107,7 +107,8 @@ python process_climate_data_gapfill.py /path/to/tile
 ```
 
 > **Note**: You may need to rename the gap-filled output file (this step will be improved in future versions).
-
+HG: agreed - until the outputs have been thoroughly investigated - let's store the 
+gap-filled data in separate files from the original downscaled climate data.
    
 ---
 
@@ -143,6 +144,8 @@ bp batch split -i ssp1_2_6_access_cm2__ssp1_2_6 -b <path_to_folder>/<tile_name>_
 ```
 
 This will create 100 batch folders in the `..._split` directory.
+
+HG: transient run should be 124 years! The historical inputs run from January 1st 1901 to December 31st 2024, i.e. 124 years. 
 
 ---
 
