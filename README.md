@@ -12,6 +12,24 @@ Tools for the DVM-DOS-TEM Circumpolar run input/output data processing.
 | H10_V7  | H11_V19 | H11_V20 | H12_V18 | H12_V20 | H12_V4  |
 | H12_V6  | H13_V20 | H14_V20 | H3_V14  | H9_V13  |         |
 
+HG: All these tiles have land (as delineated in the example below - blue polygons).
+They were thus included in the original circumpolar map where a 1 mile buffer were applied
+to the boundary of the land (as delineated in the example below - pink polygons).
+However, some of this land (e.g. tiny islands of the Aleutians) were not covered by the 
+vegetation map for instance. 
+
+![Example of an empty tile](empty_tile_example1.jpeg)
+
+Empty tile could also result from being located entirely on Greenland icefield (e.g. H10_V7)
+
+![Example of an empty tile](empty_tile_example2.jpeg)
+
+One last case occuring in this list of empty tiles, is the lack of coverage from the 
+vegetation map in the sourthern most regions (see example 3 below) 
+
+![Example of an empty tile](empty_tile_example3.jpeg)
+
+
 ## Stage I: Alaska Tiles [constant OLT]
 
 This document outlines the workflow for processing Alaska tiles as part of the Circumpolar run.
