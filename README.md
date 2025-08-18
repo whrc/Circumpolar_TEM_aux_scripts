@@ -81,6 +81,9 @@ Removed tiles with run-status = 0 for all grid cells.
 1. **Disable DSL in config**  
    Navigate to the `dvm-dos-tem/config/config.js` file and **turn off the DSL setting** for all stages. *(Note: the current `pr` branch may have it enabled.)*
 
+HG: Why? It hasn't clearly been demonstrated that DSL was the reason for any error in the model. Cold climate simulations result in soil thermal computation being very slow, 
+but the cause is very likely the cold climate, not the  DSL. So unless there is more evidence of serious issues with DSL, it should be turned on! We loose a lot of process-based dynamic by turning it off. Furthermore, all calibrations have been conducted with DSL on.
+
 2. **Create Alaska Working Directory**  
    On `/mnt/exacloud`, create your working folder using your username:
    ```
