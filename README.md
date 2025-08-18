@@ -6,6 +6,12 @@ Tools for the DVM-DOS-TEM Circumpolar run input/output data processing.
 
 ![Map of the Circumpolar](circ_map_ids.jpg)
 
+## Empty tiles
+|    |    |     |     |    |    |
+|---------|---------|---------|---------|---------|---------|
+| H10_V7  | H11_V19 | H11_V20 | H12_V18 | H12_V20 | H12_V4  |
+| H12_V6  | H13_V20 | H14_V20 | H3_V14  | H9_V13  |         |
+
 ## Stage I: Alaska Tiles [constant OLT]
 
 This document outlines the workflow for processing Alaska tiles as part of the Circumpolar run.
