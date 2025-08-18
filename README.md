@@ -204,6 +204,12 @@ python plot_nc_all_files.py full_path_your_tile/ssp1_2_6_access_cm2__ssp1_2_6_sp
 
 Once Stage I is complete, we can proceed to the next scenario.  
 For this stage, there is **no need** to re-run the `-pr`, `-eq`, or `-sp` phases.  
+
+HG: Transient doesn't need to be re-run either - unless there is some lingering issues 
+with reasing in the restart files. For this first set of simulations, lets try without repeating historical runs. 
+The appropriate set of flags to run DVM-DOS-TEM in this configuration is:
+./dvmdostem -l fatal -f /path/to/config/config.js --no-output-cleanup --restart-run  -p 0 -e 0 -s 0 -t 0 -n 76
+
 Instead, we will use the script below to:  
 
 1. Copy the `restart-tr.nc` file into each batch directory.  
@@ -236,3 +242,13 @@ python orchestrate_scenarios.py --path-to-folder /mnt/exacloud/ejafarov_woodwell
 - [x] Finalize plotting script
 - [x] Automate renaming of gap-filled files
 - [ ] Automate new scenario generation and job submission script
+
+HG: Note related to automation of scenario simulations. 
+1- scnearion and GCM names should be stores in the metadata of the outputs
+2- sets of outputs per scneario should be stored in different directoriies. 
+Directory name should include the name of the scenario and GCM
+3- path to restart files should be included in the config file so there is
+no more need to copy the restart file in every scenario output directory...
+
+
+
