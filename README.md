@@ -145,7 +145,9 @@ bp batch split -i ssp1_2_6_access_cm2__ssp1_2_6 -b <path_to_folder>/<tile_name>_
 
 This will create 100 batch folders in the `..._split` directory.
 
-HG: transient run should be 124 years! The historical inputs run from January 1st 1901 to December 31st 2024, i.e. 124 years. 
+HG: transient run should be 124 years! The historical inputs run from January 1st 1901 to December 31st 2024, i.e. 124 years. With current specs, there is temporal discontinuity btw historical and scenario simulations. One of the consequences of this temporal discontinuity
+would consist in the restart files created from the historical simulations (restart-tr.nc) 
+would likely not be useful to run scenarios.
 
 ---
 
