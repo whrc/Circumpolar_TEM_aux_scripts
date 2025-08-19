@@ -72,12 +72,11 @@ def main():
     base_scenario_name = "ssp1_2_6_access_cm2__ssp1_2_6"  # Change if needed
     path_to_folder = os.getcwd()
 
-    #pull_tile(tile_name)
-    #run_gapfill(tile_name)
-    #generate_scenarios(tile_name)
+    pull_tile(tile_name)
+    run_gapfill(tile_name)
+    generate_scenarios(tile_name)
 
-    #base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
-    base_split_path='/mnt/exacloud/ejafarov_woodwellclimate_org/Alaska/H10_V14_sc/ssp1_2_6_access_cm2__ssp1_2_6_split'
+    base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
     run_batch_scenario(base_split_path)
     wait_for_jobs()
     merge_and_plot(base_split_path)
