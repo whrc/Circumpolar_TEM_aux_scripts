@@ -46,7 +46,10 @@ def split_rest_scenarios(path_to_folder, tile_name, base_scenario_name):
         d.name for d in scenario_dir.iterdir()
         if d.is_dir() and d.name.startswith("ssp") and d.name != base_scenario_name
     ]
-    for scenario in scenarios:
+    #filter scenario folder names ending on _split 
+    scenarios_nosplit = [s for s in scenarios if "_split" not in s]
+    
+    for scenario in scenarios_nosplit:
         input_path = scenario_dir / scenario
         output_path = f"{input_path}_split"
         run_cmd(f"bp batch split -i {input_path} -b {output_path}")
