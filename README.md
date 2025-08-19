@@ -200,7 +200,7 @@ python plot_nc_all_files.py full_path_your_tile/ssp1_2_6_access_cm2__ssp1_2_6_sp
 
 ---
 
-## Stage II: New scenario: ssp1_2_6_mri_esm2_0__ssp1_2_6
+### Next Scenario: ssp1_2_6_mri_esm2_0__ssp1_2_6
 
 Once Stage I is complete, we can proceed to the next scenario.  
 For this stage, there is **no need** to re-run the `-pr`, `-eq`, or `-sp` phases.  
@@ -228,6 +228,45 @@ The following command automates splitting and file copying steps for all scenari
 python orchestrate_scenarios.py --path-to-folder /mnt/exacloud/ejafarov_woodwellclimate_org/Alaska/ \
 --tile-dir H10_V14_sc --new-scenario-script generate_next_scenario.py
 ```
+
+## Stage II: Canada Tiles [constant OLT]
+
+![Map of the Canadian Tiles](canada_tile_ids.jpg)
+
+
+| Column 1 | Column 2 | Column 3 |
+| -------- | -------- | -------- |
+| H1\_V10  | H6\_V12  | H4\_V4   |
+| H9\_V9   | H3\_V14 [empty]  | H8\_V9   |
+| H1\_V7   | H6\_V6   | H4\_V5   |
+| H10\_V10 | H3\_V2   | H9\_V10  |
+| H1\_V8   | H6\_V7   | H4\_V6   |
+| H10\_V11 | H3\_V3   | H9\_V11  |
+| H1\_V9   | H6\_V8   | H4\_V7   |
+| H10\_V8  | H3\_V4   | H9\_V12  |
+| H2\_V10  | H6\_V9   | H5\_V11  |
+| H10\_V9  | H3\_V5   | H9\_V14  |
+| H2\_V11  | H7\_V10  | H5\_V12  |
+| H11\_V8  | H3\_V6   | H9\_V13 [empty]  |
+| H2\_V12  | H7\_V11  | H5\_V13  |
+| H11\_V9  | H3\_V7   | H5\_V14  |
+| H2\_V5   | H7\_V12  | H5\_V15  |
+| H4\_V8   | H3\_V8   | H5\_V16  |
+| H2\_V6   | H7\_V6   | H5\_V5   |
+| H5\_V10  | H3\_V9   | H6\_V13  |
+| H2\_V7   | H7\_V7   | H6\_V14  |
+| H5\_V6   | H4\_V10  | H6\_V15  |
+| H2\_V8   | H7\_V8   | H6\_V16  |
+| H5\_V7   | H4\_V11  | H7\_V13  |
+| H2\_V9   | H7\_V9   | H7\_V14  |
+| H5\_V8   | H4\_V12  | H7\_V15  |
+| H3\_V10  | H8\_V10  | H7\_V16  |
+| H5\_V9   | H4\_V13  | H8\_V13  |
+| H3\_V11  | H8\_V11  | H8\_V14  |
+| H6\_V10  | H4\_V14  | H8\_V15  |
+| H3\_V12  | H8\_V12  | H8\_V16  |
+| H6\_V11  | H4\_V3   |          |
+| H3\_V13  | H8\_V8   |          |
 
 ## Notes
 
