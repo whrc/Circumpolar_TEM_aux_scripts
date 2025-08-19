@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 Usage:
-  python generate_next_scenario.py /path/to/folder1 /path/to/folder2
+  python generate_next_scenario.py /path/to/base_folder /path/to/scenario_folder
 
-Does two things for each subfolder under folder1 (e.g., batch_0, batch_1, ...):
-1) Copies restart_tr.nc from folder1/<batch>/output/ -> folder2/<batch>/output/
-2) In folder2/<batch>/slurm_runner.sh, inserts '--no-output-cleanup --restart-run'
+Does two things for each subfolder under base_folder (e.g., batch_0, batch_1, ...):
+1) Copies restart_tr.nc from base_folder/<batch>/output/ -> scenario_folder/<batch>/output/
+2) In scenario_folder/<batch>/slurm_runner.sh, inserts '--no-output-cleanup --restart-run'
    immediately after '-l disabled' (idempotent: won’t duplicate if already present)
 """
 
@@ -50,7 +50,7 @@ def copy_restart_sp_file(src_output: Path, dst_output: Path):
     dst_output.mkdir(parents=True, exist_ok=True)
     src_file = src_output / "restart-*.nc"
 
-    restart_files=['restart-tr.nc','restart-sp.nc','restart-pr.nc']
+    restart_files=['restart-tr.nc']#,'restart-sp.nc','restart-pr.nc']
     copied = False
     for name in restart_files:
         src_file = src_output / name
@@ -65,13 +65,6 @@ def copy_restart_sp_file(src_output: Path, dst_output: Path):
     if not copied:
         print(f"[INFO] No restart-*.nc files found in {src_output}")
 
-    #if src_file.exists():
-    #    shutil.copy2(src_file, dst_output / src_file.name)
-    #    #print(f"[COPY] {src_file} -> {dst_output / src_file.name}")
-    #else:
-    #    print(f"[INFO] restart-tr.nc not found in {src_output}")
-
-#----
 
 def insert_flags_after_disabled(line: str) -> str:
     """
@@ -105,52 +98,31 @@ def insert_flags_after_disabled(line: str) -> str:
     new_line = " ".join(parts)
     return new_line + ("\n" if has_nl else "")
 
-
-#def insert_flags_after_disabled(line: str) -> str:
-#    # Insert '--no-output-cleanup --restart-run' after '-l disabled'
-#    parts = line.split()
-#    if "-l" in parts and "disabled" in parts:
-#        idx = parts.index("disabled")
-#        parts.insert(idx + 1, "--no-output-cleanup")
-#        parts.insert(idx + 2, "--restart-run")
-#    return " ".join(parts) + "\n"
-
 def modify_slurm(slurm_path: Path):
     if not slurm_path.exists():
-        print(f"[SKIP] slurm_runner.sh not found: {slurm_path}")
+        print(f"[SKIP] File not found: {slurm_path}")
         return
 
     with open(slurm_path, "r") as f:
         lines = f.readlines()
 
-    changed = False
     new_lines = []
+    changed = False
     for line in lines:
-        if "mpirun" in line and "dvmdostem" in line and "-l disabled" in line:
-            # Insert flags
-            new_line = insert_flags_after_disabled(line)
-
-            # Replace parameter set
-            new_line = new_line.replace(
-                "-p 100 -e 2000 -s 200 -t 123 -n 76",
-                "-p 0 -e 0 -s 0 -t 123 -n 76"
-            )
-
-            if new_line != line:
-                changed = True
-            new_lines.append(new_line)
-        else:
-            new_lines.append(line)
+        if "mpirun" in line and "--max-output-volume=-1" in line:
+            # Replace everything after --max-output-volume=-1 with the new flags
+            parts = line.split("--max-output-volume=-1")
+            line = parts[0] + "--max-output-volume=-1 -p 0 -e 0 -s 0 -t 0 -n 76\n"
+            changed = True
+        new_lines.append(line)
 
     if changed:
         with open(slurm_path, "w") as f:
             f.writelines(new_lines)
-        print(f"[EDIT] {slurm_path} (inserted flags and changed params)")
+        print(f"[EDIT] Updated {slurm_path}")
     else:
-        print(f"[OK]   {slurm_path} (no changes needed)")
+        print(f"[OK] No changes needed in {slurm_path}")
 
-
-#-------
 
 def main():
     parser = argparse.ArgumentParser(description="Sync *_sp.nc and edit slurm_runner.sh lines.")
