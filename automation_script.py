@@ -53,11 +53,13 @@ def split_rest_scenarios(path_to_folder, tile_name, base_scenario_name):
         input_path = scenario_dir / scenario
         output_path = f"{input_path}_split"
         run_cmd(f"bp batch split -i {input_path} -b {output_path}")
-    return scenarios
+    return scenarios_nosplit
 
-def modify_new_scenarios(path_to_folder, tile_name):
-    run_cmd(f"python orchestrate_scenarios.py --path-to-folder {path_to_folder} "
-            f"--tile-dir {tile_name}_sc --new-scenario-script generate_next_scenario.py")
+def modify_new_scenarios(path_to_folder, tile_name, base_scenario_name, scenarios):
+    for scenario in scenarios:
+        base_folder = f"{path_to_folder}/{tile_name}_sc/{base_scenario_name}_split"
+        scenario_folder = f"{path_to_folder}/{tile_name}_sc/{scenario}_split"
+        run_cmd(f"python generate_next_scenario.py {base_folder} {scenario_folder}")
 
 def process_remaining_scenarios(path_to_folder, tile_name, scenarios):
     for scenario in scenarios:
@@ -85,7 +87,7 @@ def main():
     merge_and_plot(base_split_path)
 
     scenarios = split_rest_scenarios(path_to_folder, tile_name, base_scenario_name)
-    modify_new_scenarios(path_to_folder, tile_name)
+    modify_new_scenarios(path_to_folder, tile_name, base_scenario_name, scenarios)
     process_remaining_scenarios(path_to_folder, tile_name, scenarios)
 
 if __name__ == "__main__":
