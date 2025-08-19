@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Usage:
-  python new_scenario.py /path/to/folder1 /path/to/folder2
+  python generate_next_scenario.py /path/to/folder1 /path/to/folder2
 
 Does two things for each subfolder under folder1 (e.g., batch_0, batch_1, ...):
 1) Copies restart_tr.nc from folder1/<batch>/output/ -> folder2/<batch>/output/
@@ -48,24 +48,72 @@ def copy_restart_sp_file(src_output: Path, dst_output: Path):
         return
 
     dst_output.mkdir(parents=True, exist_ok=True)
-    src_file = src_output / "restart-tr.nc"
+    src_file = src_output / "restart-*.nc"
 
-    if src_file.exists():
-        shutil.copy2(src_file, dst_output / src_file.name)
-        print(f"[COPY] {src_file} -> {dst_output / src_file.name}")
-    else:
-        print(f"[INFO] restart-tr.nc not found in {src_output}")
+    restart_files=['restart-tr.nc','restart-sp.nc','restart-pr.nc']
+    copied = False
+    for name in restart_files:
+        src_file = src_output / name
+        print(src_file)
+        if src_file.is_file():  # ← FIXED: check the Path, not the string
+            shutil.copy2(src_file, dst_output / src_file.name)
+            print(f"[COPY] {src_file} -> {dst_output / src_file.name}")
+            copied_any = True
+        else:
+            print(f"[INFO] Not found: {src_file}")
+
+    if not copied:
+        print(f"[INFO] No restart-*.nc files found in {src_output}")
+
+    #if src_file.exists():
+    #    shutil.copy2(src_file, dst_output / src_file.name)
+    #    #print(f"[COPY] {src_file} -> {dst_output / src_file.name}")
+    #else:
+    #    print(f"[INFO] restart-tr.nc not found in {src_output}")
 
 #----
 
 def insert_flags_after_disabled(line: str) -> str:
-    # Insert '--no-output-cleanup --restart-run' after '-l disabled'
-    parts = line.split()
-    if "-l" in parts and "disabled" in parts:
-        idx = parts.index("disabled")
-        parts.insert(idx + 1, "--no-output-cleanup")
-        parts.insert(idx + 2, "--restart-run")
-    return " ".join(parts) + "\n"
+    """
+    After '-l disabled', ensure the flags '--no-output-cleanup' and '--restart-run' are present.
+    If both flags already exist anywhere in the line, do nothing.
+    """
+    # Preserve trailing newline if present
+    has_nl = line.endswith("\n")
+    parts = line.strip().split()
+
+    # Require the exact pattern "-l disabled"
+    try:
+        l_idx = parts.index("-l")
+        if parts[l_idx + 1] != "disabled":
+            return line  # do nothing if "-l disabled" isn't there exactly
+    except (ValueError, IndexError):
+        return line  # "-l" not found or malformed
+
+    # If both flags already exist anywhere, do nothing
+    if "--no-output-cleanup" in parts and "--restart-run" in parts:
+        return line
+
+    # Insert missing flags immediately after "disabled" in a stable order
+    insert_pos = l_idx + 2
+    if "--no-output-cleanup" not in parts:
+        parts.insert(insert_pos, "--no-output-cleanup")
+        insert_pos += 1
+    if "--restart-run" not in parts:
+        parts.insert(insert_pos, "--restart-run")
+
+    new_line = " ".join(parts)
+    return new_line + ("\n" if has_nl else "")
+
+
+#def insert_flags_after_disabled(line: str) -> str:
+#    # Insert '--no-output-cleanup --restart-run' after '-l disabled'
+#    parts = line.split()
+#    if "-l" in parts and "disabled" in parts:
+#        idx = parts.index("disabled")
+#        parts.insert(idx + 1, "--no-output-cleanup")
+#        parts.insert(idx + 2, "--restart-run")
+#    return " ".join(parts) + "\n"
 
 def modify_slurm(slurm_path: Path):
     if not slurm_path.exists():
