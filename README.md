@@ -229,6 +229,15 @@ python orchestrate_scenarios.py --path-to-folder /mnt/exacloud/ejafarov_woodwell
 --tile-dir H10_V14_sc --new-scenario-script generate_next_scenario.py
 ```
 
+### Automation of the steps 1-8, next scenario, and the rest of the scenarios 
+See [automation_script](#automation_script)
+
+Navigate to the folder that includes all the Python scripts required to run Steps **1** through **8** and **Next Scenario**.
+```bash
+python automation_script.py tile_name
+```
+This command executes the whole workflow and monitors the job status. (Still testing)
+
 ## Stage II: Canada Tiles [constant OLT]
 
 ![Map of the Canadian Tiles](canada_tile_ids.png)
