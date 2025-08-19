@@ -280,7 +280,23 @@ python orchestrate_scenarios.py --path-to-folder /mnt/exacloud/ejafarov_woodwell
 - [x] Add monitoring script
 - [x] Finalize plotting script
 - [x] Automate renaming of gap-filled files
-- [ ] Automate new scenario generation and job submission script
+
+### automation_script (Doğukan)
+- [ ] pull_tile
+- [ ] run_gapfill_script
+- [ ] generate_scenarios
+- [ ] split_base_scenario
+- [ ] run_base_scenarios
+- [ ] wait_for_base_scenarios_to_finish
+- [ ] merge_base_scenarios
+- [ ] split_rest_scenarios
+- [ ] modify_new_scenarios_copy_restart_file
+- [ ] run_rest_scenarios
+- [ ] merge_batches
+- [ ] plot_all_merged_scenarios
+
+### Post-analysis (Hélène)
+- [ ] A list of the steps (functional types, benchmarking, etc.)
 
 HG: Note related to automation of scenario simulations. 
 1- scnearion and GCM names should be stores in the metadata of the outputs
