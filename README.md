@@ -231,7 +231,7 @@ python orchestrate_scenarios.py --path-to-folder /mnt/exacloud/ejafarov_woodwell
 
 ## Stage II: Canada Tiles [constant OLT]
 
-![Map of the Canadian Tiles](canada_tile_ids.jpg)
+![Map of the Canadian Tiles](canada_tile_ids.png)
 
 
 | Column 1 | Column 2 | Column 3 |
