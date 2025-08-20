@@ -75,7 +75,22 @@ Removed tiles with run-status = 0 for all grid cells.
 
 
 ---
+# Scenario Run Folder Structure
 
+- Region (Alaska)
+  - tile_1_sc
+  - tile_2_sc
+  - ...
+  - tile_n_sc
+    - ssp1_2_6_access_cm2_split
+    - ssp1_2_6_mri_esm2_0_split
+    - ssp2_4_5_access_cm2_split
+    - ...
+    - ssp5_8_5_mri_esm2_0_split
+      - all_merged
+        - summary_plots.pdf
+
+---
 ## Initial Setup
 
 1. **Disable DSL in config**  
