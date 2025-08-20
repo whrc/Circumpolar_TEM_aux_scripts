@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Usage:
-  python new_scenario.py /path/to/folder1 /path/to/folder2
+  python generate_next_scenario.py /path/to/base_folder /path/to/scenario_folder
 
 Does two things for each subfolder under folder1 (e.g., batch_0, batch_1, ...):
 1) Copies restart_tr.nc from folder1/<batch>/output/ -> folder2/<batch>/output/
@@ -46,13 +46,22 @@ def copy_restart_sp_file(src_output: Path, dst_output: Path):
         return
 
     dst_output.mkdir(parents=True, exist_ok=True)
-    src_file = src_output / "restart-tr.nc"
+    src_file = src_output / "restart-*.nc"
 
-    if src_file.exists():
-        shutil.copy2(src_file, dst_output / src_file.name)
-        print(f"[COPY] {src_file} -> {dst_output / src_file.name}")
-    else:
-        print(f"[INFO] restart-tr.nc not found in {src_output}")
+    restart_files=['restart-tr.nc']#,'restart-sp.nc','restart-pr.nc']
+    copied = False
+    for name in restart_files:
+        src_file = src_output / name
+        print(src_file)
+        if src_file.is_file():  # ← FIXED: check the Path, not the string
+            shutil.copy2(src_file, dst_output / src_file.name)
+            print(f"[COPY] {src_file} -> {dst_output / src_file.name}")
+            copied_any = True
+        else:
+            print(f"[INFO] Not found: {src_file}")
+
+    if not copied:
+        print(f"[INFO] No restart-*.nc files found in {src_output}")
 
 def modify_slurm_command(line: str) -> Tuple[str, bool]:
     """
@@ -91,14 +100,14 @@ def modify_slurm_command(line: str) -> Tuple[str, bool]:
 
 def modify_slurm(slurm_path: Path):
     if not slurm_path.exists():
-        print(f"[SKIP] slurm_runner.sh not found: {slurm_path}")
+        print(f"[SKIP] File not found: {slurm_path}")
         return
 
     with open(slurm_path, "r") as f:
         lines = f.readlines()
 
-    changed = False
     new_lines = []
+    changed = False
     for line in lines:
         new_line, line_changed = modify_slurm_command(line)
         if line_changed:
@@ -108,12 +117,10 @@ def modify_slurm(slurm_path: Path):
     if changed:
         with open(slurm_path, "w") as f:
             f.writelines(new_lines)
-        print(f"[EDIT] {slurm_path} (inserted flags and changed params)")
+        print(f"[EDIT] Updated {slurm_path}")
     else:
-        print(f"[OK]   {slurm_path} (no changes needed)")
+        print(f"[OK] No changes needed in {slurm_path}")
 
-
-#-------
 
 def main():
     parser = argparse.ArgumentParser(description="Sync *_sp.nc and edit slurm_runner.sh lines.")

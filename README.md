@@ -12,6 +12,24 @@ Tools for the DVM-DOS-TEM Circumpolar run input/output data processing.
 | H10_V7  | H11_V19 | H11_V20 | H12_V18 | H12_V20 | H12_V4  |
 | H12_V6  | H13_V20 | H14_V20 | H3_V14  | H9_V13  |         |
 
+HG: All these tiles have land (as delineated in the example below - blue polygons).
+They were thus included in the original circumpolar map where a 1 mile buffer were applied
+to the boundary of the land (as delineated in the example below - pink polygons).
+However, some of this land (e.g. tiny islands of the Aleutians) were not covered by the 
+vegetation map for instance. 
+
+![Example of an empty tile](empty_tile_example1.jpeg)
+
+Empty tile could also result from being located entirely on Greenland icefield (e.g. H10_V7)
+
+![Example of an empty tile](empty_tile_example2.jpeg)
+
+One last case occuring in this list of empty tiles, is the lack of coverage from the 
+vegetation map in the sourthern most regions (see example 3 below) 
+
+![Example of an empty tile](empty_tile_example3.jpeg)
+
+
 ## Stage I: Alaska Tiles [constant OLT]
 
 This document outlines the workflow for processing Alaska tiles as part of the Circumpolar run.
@@ -63,6 +81,9 @@ Removed tiles with run-status = 0 for all grid cells.
 1. **Disable DSL in config**  
    Navigate to the `dvm-dos-tem/config/config.js` file and **turn off the DSL setting** for all stages. *(Note: the current `pr` branch may have it enabled.)*
 
+HG: Why? It hasn't clearly been demonstrated that DSL was the reason for any error in the model. Cold climate simulations result in soil thermal computation being very slow, 
+but the cause is very likely the cold climate, not the  DSL. So unless there is more evidence of serious issues with DSL, it should be turned on! We loose a lot of process-based dynamic by turning it off. Furthermore, all calibrations have been conducted with DSL on.
+
 2. **Create Alaska Working Directory**  
    On `/mnt/exacloud`, create your working folder using your username:
    ```
@@ -86,7 +107,8 @@ python process_climate_data_gapfill.py /path/to/tile
 ```
 
 > **Note**: You may need to rename the gap-filled output file (this step will be improved in future versions).
-
+HG: agreed - until the outputs have been thoroughly investigated - let's store the 
+gap-filled data in separate files from the original downscaled climate data.
    
 ---
 
@@ -122,6 +144,10 @@ bp batch split -i ssp1_2_6_access_cm2__ssp1_2_6 -b <path_to_folder>/<tile_name>_
 ```
 
 This will create 100 batch folders in the `..._split` directory.
+
+HG: transient run should be 124 years! The historical inputs run from January 1st 1901 to December 31st 2024, i.e. 124 years. With current specs, there is temporal discontinuity btw historical and scenario simulations. One of the consequences of this temporal discontinuity
+would consist in the restart files created from the historical simulations (restart-tr.nc) 
+would likely not be useful to run scenarios.
 
 ---
 
@@ -174,10 +200,16 @@ python plot_nc_all_files.py full_path_your_tile/ssp1_2_6_access_cm2__ssp1_2_6_sp
 
 ---
 
-## Stage II: New scenario: ssp1_2_6_mri_esm2_0__ssp1_2_6
+### Next Scenario: ssp1_2_6_mri_esm2_0__ssp1_2_6
 
 Once Stage I is complete, we can proceed to the next scenario.  
 For this stage, there is **no need** to re-run the `-pr`, `-eq`, or `-sp` phases.  
+
+HG: Transient doesn't need to be re-run either - unless there is some lingering issues 
+with reasing in the restart files. For this first set of simulations, lets try without repeating historical runs. 
+The appropriate set of flags to run DVM-DOS-TEM in this configuration is:
+./dvmdostem -l fatal -f /path/to/config/config.js --no-output-cleanup --restart-run  -p 0 -e 0 -s 0 -t 0 -n 76
+
 Instead, we will use the script below to:  
 
 1. Copy the `restart-tr.nc` file into each batch directory.  
@@ -197,6 +229,54 @@ python orchestrate_scenarios.py --path-to-folder /mnt/exacloud/ejafarov_woodwell
 --tile-dir H10_V14_sc --new-scenario-script generate_next_scenario.py
 ```
 
+### Automation of the steps 1-8, next scenario, and the rest of the scenarios 
+See [automation_script](#automation_script)
+
+Navigate to the folder that includes all the Python scripts required to run Steps **1** through **8** and **Next Scenario**.
+```bash
+python automation_script.py tile_name
+```
+This command executes the whole workflow and monitors the job status. (Still testing)
+
+## Stage II: Canada Tiles [constant OLT]
+
+![Map of the Canadian Tiles](canada_tile_ids.png)
+
+
+| Column 1 | Column 2 | Column 3 |
+| -------- | -------- | -------- |
+| H1\_V10  | H6\_V12  | H4\_V4   |
+| H9\_V9   | H3\_V14 [empty]  | H8\_V9   |
+| H1\_V7   | H6\_V6   | H4\_V5   |
+| H10\_V10 | H3\_V2   | H9\_V10  |
+| H1\_V8   | H6\_V7   | H4\_V6   |
+| H10\_V11 | H3\_V3   | H9\_V11  |
+| H1\_V9   | H6\_V8   | H4\_V7   |
+| H10\_V8  | H3\_V4   | H9\_V12  |
+| H2\_V10  | H6\_V9   | H5\_V11  |
+| H10\_V9  | H3\_V5   | H9\_V14  |
+| H2\_V11  | H7\_V10  | H5\_V12  |
+| H11\_V8  | H3\_V6   | H9\_V13 [empty]  |
+| H2\_V12  | H7\_V11  | H5\_V13  |
+| H11\_V9  | H3\_V7   | H5\_V14  |
+| H2\_V5   | H7\_V12  | H5\_V15  |
+| H4\_V8   | H3\_V8   | H5\_V16  |
+| H2\_V6   | H7\_V6   | H5\_V5   |
+| H5\_V10  | H3\_V9   | H6\_V13  |
+| H2\_V7   | H7\_V7   | H6\_V14  |
+| H5\_V6   | H4\_V10  | H6\_V15  |
+| H2\_V8   | H7\_V8   | H6\_V16  |
+| H5\_V7   | H4\_V11  | H7\_V13  |
+| H2\_V9   | H7\_V9   | H7\_V14  |
+| H5\_V8   | H4\_V12  | H7\_V15  |
+| H3\_V10  | H8\_V10  | H7\_V16  |
+| H5\_V9   | H4\_V13  | H8\_V13  |
+| H3\_V11  | H8\_V11  | H8\_V14  |
+| H6\_V10  | H4\_V14  | H8\_V15  |
+| H3\_V12  | H8\_V12  | H8\_V16  |
+| H6\_V11  | H4\_V3   |          |
+| H3\_V13  | H8\_V8   |          |
+
 ## Notes
 
 - Make sure you are working within your own namespace/folder on Exacloud to avoid conflicts.
@@ -209,4 +289,30 @@ python orchestrate_scenarios.py --path-to-folder /mnt/exacloud/ejafarov_woodwell
 - [x] Add monitoring script
 - [x] Finalize plotting script
 - [x] Automate renaming of gap-filled files
-- [ ] Automate new scenario generation and job submission script
+
+### automation_script (Doğukan)
+- [ ] pull_tile
+- [ ] run_gapfill_script
+- [ ] generate_scenarios
+- [ ] split_base_scenario
+- [ ] run_base_scenarios
+- [ ] wait_for_base_scenarios_to_finish
+- [ ] merge_base_scenarios
+- [ ] split_rest_scenarios
+- [ ] modify_new_scenarios_copy_restart_file
+- [ ] run_rest_scenarios
+- [ ] merge_batches
+- [ ] plot_all_merged_scenarios
+
+### Post-analysis (Hélène)
+- [ ] A list of the steps (functional types, benchmarking, etc.)
+
+HG: Note related to automation of scenario simulations. 
+1- scnearion and GCM names should be stores in the metadata of the outputs
+2- sets of outputs per scneario should be stored in different directoriies. 
+Directory name should include the name of the scenario and GCM
+3- path to restart files should be included in the config file so there is
+no more need to copy the restart file in every scenario output directory...
+
+
+
