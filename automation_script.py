@@ -4,9 +4,13 @@ import subprocess
 import time
 from pathlib import Path
 
-def run_cmd(command):
+def run_cmd(command, auto_yes=False):
     print(f"[RUN] {command}")
-    subprocess.run(command, shell=True, check=True)
+    if auto_yes:
+        # Feed "y\n" automatically
+        subprocess.run(command, shell=True, check=True, input=b"y\n")
+    else:
+        subprocess.run(command, shell=True, check=True)
 
 def pull_tile(tile_name):
     run_cmd(f"gsutil -m cp -r gs://regionalinputs/CIRCUMPOLAR/{tile_name} .")
@@ -37,7 +41,7 @@ def wait_for_jobs():
         time.sleep(300)
 
 def merge_and_plot(split_path):
-    run_cmd(f"bp batch merge -b {split_path}")
+    run_cmd(f"bp batch merge -b {split_path}", auto_yes=True)
     run_cmd(f"python plot_nc_all_files.py {split_path}/all_merged/")
 
 def split_rest_scenarios(path_to_folder, tile_name, base_scenario_name):
