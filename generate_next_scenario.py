@@ -6,12 +6,14 @@ Usage:
 Does two things for each subfolder under folder1 (e.g., batch_0, batch_1, ...):
 1) Copies restart_tr.nc from folder1/<batch>/output/ -> folder2/<batch>/output/
 2) In folder2/<batch>/slurm_runner.sh, inserts '--no-output-cleanup --restart-run'
-   immediately after '-l disabled' (idempotent: won’t duplicate if already present)
+   immediately after '-l disabled' (idempotent: won't duplicate if already present)
 """
 
 import argparse
 import shutil
+import re
 from pathlib import Path
+from typing import Tuple
 
 def insert_flags_after_disabled(line: str) -> str:
     """
@@ -21,20 +23,16 @@ def insert_flags_after_disabled(line: str) -> str:
     if "-l disabled" not in line:
         return line
 
-    to_add = []
-    if "--no-output-cleanup" not in line:
-        to_add.append("--no-output-cleanup")
-    if "--restart-run" not in line:
-        to_add.append("--restart-run")
+    # If flags already exist, don't insert them again
+    if "--no-output-cleanup" in line or "--restart-run" in line:
+        return line
 
-    if not to_add:
-        return line  # nothing missing
-
+    # Insert flags after '-l disabled'
     key = "-l disabled"
     idx = line.find(key)
     before = line[: idx + len(key)]
     after = line[idx + len(key):]
-    insertion = " " + " ".join(to_add)
+    insertion = " --no-output-cleanup --restart-run"
 
     return before + insertion + after
 
@@ -56,16 +54,40 @@ def copy_restart_sp_file(src_output: Path, dst_output: Path):
     else:
         print(f"[INFO] restart-tr.nc not found in {src_output}")
 
-#----
+def modify_slurm_command(line: str) -> Tuple[str, bool]:
+    """
+    Modify a mpirun dvmdostem command line to:
+    1. Insert '--no-output-cleanup --restart-run' after '-l disabled' (without duplicating)
+    2. Replace -p, -e, -s parameters with 0 values while preserving -t and -n
+    
+    Returns: (modified_line, was_changed)
+    """
+    if not ("mpirun" in line and "dvmdostem" in line and "-l disabled" in line):
+        return line, False
+    
+    original_line = line
+    
+    # Step 1: Insert flags after '-l disabled' without duplicating
+    line = insert_flags_after_disabled(line)
+    
+    # Step 2: Use regex to robustly replace parameters
+    # Pattern matches: -p <number> -e <number> -s <number> -t <number> -n <number>
+    # We want to replace the first three with 0 while keeping -t and -n values
+    
+    def replace_params(match):
+        p_val = match.group(1)  # -p value (replace with 0)
+        e_val = match.group(2)  # -e value (replace with 0) 
+        s_val = match.group(3)  # -s value (replace with 0)
+        t_val = match.group(4)  # -t value (replace with 0)
+        n_val = match.group(5)  # -n value (keep)
+        return f"-p 0 -e 0 -s 0 -t 0 -n {n_val}"
+    
+    # Pattern to match -p <num> -e <num> -s <num> -t <num> -n <num>
+    param_pattern = r'-p\s+(\d+)\s+-e\s+(\d+)\s+-s\s+(\d+)\s+-t\s+(\d+)\s+-n\s+(\d+)'
+    line = re.sub(param_pattern, replace_params, line)
+    
+    return line, line != original_line
 
-def insert_flags_after_disabled(line: str) -> str:
-    # Insert '--no-output-cleanup --restart-run' after '-l disabled'
-    parts = line.split()
-    if "-l" in parts and "disabled" in parts:
-        idx = parts.index("disabled")
-        parts.insert(idx + 1, "--no-output-cleanup")
-        parts.insert(idx + 2, "--restart-run")
-    return " ".join(parts) + "\n"
 
 def modify_slurm(slurm_path: Path):
     if not slurm_path.exists():
@@ -78,21 +100,10 @@ def modify_slurm(slurm_path: Path):
     changed = False
     new_lines = []
     for line in lines:
-        if "mpirun" in line and "dvmdostem" in line and "-l disabled" in line:
-            # Insert flags
-            new_line = insert_flags_after_disabled(line)
-
-            # Replace parameter set
-            new_line = new_line.replace(
-                "-p 100 -e 2000 -s 200 -t 123 -n 76",
-                "-p 0 -e 0 -s 0 -t 123 -n 76"
-            )
-
-            if new_line != line:
-                changed = True
-            new_lines.append(new_line)
-        else:
-            new_lines.append(line)
+        new_line, line_changed = modify_slurm_command(line)
+        if line_changed:
+            changed = True
+        new_lines.append(new_line)
 
     if changed:
         with open(slurm_path, "w") as f:
@@ -118,8 +129,8 @@ def main():
     if not folder2.exists():
         raise SystemExit(f"[ERROR] folder2 does not exist: {folder2}")
 
-    # Iterate over all subfolders in folder1 (e.g., batch_0, batch_1, ...)
-    batch_dirs = sorted([p for p in folder1.iterdir() if p.is_dir()])
+    # Iterate over all batch_N folders in folder1 (e.g., batch_0, batch_1, ...)
+    batch_dirs = sorted([p for p in folder1.iterdir() if p.is_dir() and p.name.startswith('batch_')])
     if not batch_dirs:
         print(f"[WARN] No subfolders found in {folder1}")
 
@@ -135,4 +146,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
