@@ -137,9 +137,12 @@ if __name__ == "__main__":
     
     if total_n > 0:
         completion_percentage = (total_m / total_n) * 100
-        average_run_time = total_time / count_n
-        print(f"\nOverall Completion: {completion_percentage:.2f}%")
-        print(f"\nMean total runtime: {average_run_time:.2f} seconds")
+        if count_n == 0:
+            print(f"\nOverall Completion: {completion_percentage:.2f}%")
+        else:
+            average_run_time = total_time / count_n
+            print(f"\nOverall Completion: {completion_percentage:.2f}%")
+            print(f"\nMean total runtime: {average_run_time:.2f} seconds")
     else:
         print("\nNo valid data found for processing.")
 
