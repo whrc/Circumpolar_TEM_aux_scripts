@@ -173,8 +173,8 @@ def main():
     parser.add_argument("scenario_folder", type=Path, help="Destination with batch_* folders")
     args = parser.parse_args()
 
-    folder1 = args.folder1
-    folder2 = args.folder2
+    folder1 = args.base_folder
+    folder2 = args.scenario_folder
 
     if not folder1.exists():
         raise SystemExit(f"[ERROR] folder1 does not exist: {folder1}")
@@ -182,9 +182,9 @@ def main():
         raise SystemExit(f"[ERROR] folder2 does not exist: {folder2}")
 
     # Iterate over all batch_N folders in folder1 (e.g., batch_0, batch_1, ...)
-    batch_dirs = sorted([p for p in folder1.iterdir() if p.is_dir() and p.name.startswith('batch_')])
-    if not batch_dirs:
-        print(f"[WARN] No subfolders found in {folder1}")
+    batches = sorted([p for p in folder1.iterdir() if p.is_dir() and p.name.startswith('batch_')])
+    if not batches:
+        print(f"[WARN] No batch folders found in {folder1}")
 
     for batch_src in batches:
         batch_name = batch_src.name
@@ -193,7 +193,7 @@ def main():
         #print(batch_dst)
 
         # 1. Copy restart-tr.nc
-        copy_restart_file(batch_src / "output", batch_dst / "output")
+        copy_restart_sp_file(batch_src / "output", batch_dst / "output")
         #print(f"[OK] Restart files are copied.")
 
         # 2. Modify slurm_runner.sh
