@@ -82,12 +82,12 @@ Removed tiles with run-status = 0 for all grid cells.
   - tile_2_sc
   - ...
   - tile_n_sc
-    - ssp1_2_6_access_cm2_split
+    - ssp1_2_6_access_cm2_split (base_scenario)
     - ssp1_2_6_mri_esm2_0_split
     - ssp2_4_5_access_cm2_split
     - ...
     - ssp5_8_5_mri_esm2_0_split
-      - batches 0..99
+      - batches 0...99
       - all_merged
         - summary_plots.pdf
 
