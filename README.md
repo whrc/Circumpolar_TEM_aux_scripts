@@ -87,8 +87,8 @@ Removed tiles with run-status = 0 for all grid cells.
     - ssp2_4_5_access_cm2_split
     - ...
     - ssp5_8_5_mri_esm2_0_split
-      - batches 0...99
-      - all_merged
+      - batches_[0...99]
+      - all_merged (need to have scenario name in the attr, tile_id, exec time)
         - summary_plots.pdf
 
 ---
