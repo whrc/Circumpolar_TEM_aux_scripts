@@ -99,6 +99,7 @@ def modify_slurm_command(line: str) -> Tuple[str, bool]:
 
 
 def modify_slurm(slurm_path: Path):
+    """Update slurm_runner.sh with required flags and args."""
     if not slurm_path.exists():
         print(f"[SKIP] File not found: {slurm_path}")
         return
@@ -108,6 +109,7 @@ def modify_slurm(slurm_path: Path):
 
     new_lines = []
     changed = False
+
     for line in lines:
         new_line, line_changed = modify_slurm_command(line)
         if line_changed:
@@ -117,15 +119,58 @@ def modify_slurm(slurm_path: Path):
     if changed:
         with open(slurm_path, "w") as f:
             f.writelines(new_lines)
-        print(f"[EDIT] Updated {slurm_path}")
+        #print(f"[EDIT] Updated {slurm_path}")
     else:
         print(f"[OK] No changes needed in {slurm_path}")
 
+def modify_slurm_walltime(slurm_path: Path):
+    """Update slurm_runner.sh with required flags and args."""
+    if not slurm_path.exists():
+        print(f"[SKIP] File not found: {slurm_path}")
+        return
+
+    with open(slurm_path, "r") as f:
+        lines = f.readlines()
+
+    new_lines = []
+    changed = False
+    time_line = "#SBATCH --time=00:60:00   # <-- set max wall time to 25 minutes\n"
+    time_inserted = any("--time=" in line for line in lines)
+
+    for i, line in enumerate(lines):
+        # Insert wall time right after "#SBATCH -N 1"
+        if "#SBATCH -N 1" in line and not time_inserted:
+            new_lines.append(line)
+            new_lines.append(time_line)
+            time_inserted = True
+            changed = True
+            continue
+
+        # Replace args after --max-output-volume=-1
+        if "mpirun" in line and "--max-output-volume=-1" in line:
+            line = line.split("--max-output-volume=-1")[0] + "--max-output-volume=-1 -p 0 -e 0 -s 0 -t 0 -n 76\n"
+            changed = True
+
+        # Ensure restart flags are in place
+        if "mpirun" in line and "-l" in line and "disabled" in line:
+            updated_line = insert_flags_after_disabled(line)
+            if updated_line != line:
+                line = updated_line
+                changed = True
+
+        new_lines.append(line)
+
+    if changed:
+        with open(slurm_path, "w") as f:
+            f.writelines(new_lines)
+        #print(f"[EDIT] Updated {slurm_path}")
+    else:
+        print(f"[OK] No changes needed in {slurm_path}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Sync *_sp.nc and edit slurm_runner.sh lines.")
-    parser.add_argument("folder1", type=Path, help="Source parent folder with batch_* subfolders")
-    parser.add_argument("folder2", type=Path, help="Destination parent folder with batch_* subfolders")
+    parser = argparse.ArgumentParser(description="Copy restart files and update slurm scripts.")
+    parser.add_argument("base_folder", type=Path, help="Source with batch_* folders")
+    parser.add_argument("scenario_folder", type=Path, help="Destination with batch_* folders")
     args = parser.parse_args()
 
     folder1 = args.folder1
@@ -141,15 +186,20 @@ def main():
     if not batch_dirs:
         print(f"[WARN] No subfolders found in {folder1}")
 
-    for batch_src in batch_dirs:
+    for batch_src in batches:
         batch_name = batch_src.name
-        batch_dst = folder2 / batch_name
+        batch_dst = args.scenario_folder / batch_name
+        #print(batch_src)
+        #print(batch_dst)
 
-        # Step 1: copy *_sp.nc
-        copy_restart_sp_file(batch_src / "output", batch_dst / "output")
+        # 1. Copy restart-tr.nc
+        copy_restart_file(batch_src / "output", batch_dst / "output")
+        #print(f"[OK] Restart files are copied.")
 
-        # Step 2: modify slurm_runner.sh
-        modify_slurm(batch_dst / "slurm_runner.sh")
+        # 2. Modify slurm_runner.sh
+        #modify_slurm(batch_dst / "slurm_runner.sh")
+        modify_slurm_walltime(batch_dst / "slurm_runner.sh")
+        #print(f"[EDIT] Updated slurm job.")
 
 if __name__ == "__main__":
     main()
