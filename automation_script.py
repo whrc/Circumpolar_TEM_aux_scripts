@@ -6,11 +6,16 @@ from pathlib import Path
 
 def run_cmd(command, auto_yes=False):
     print(f"[RUN] {command}")
-    if auto_yes:
-        # Feed "y\n" automatically
-        subprocess.run(command, shell=True, check=True, input=b"y\n")
-    else:
-        subprocess.run(command, shell=True, check=True)
+    try:
+        if auto_yes:
+            # Feed "y\n" automatically
+            subprocess.run(command, shell=True, check=True, input=b"y\n")
+        else:
+            subprocess.run(command, shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Command failed: {command}")
+        print(f"[CODE] Exit status: {e.returncode}")
+        print(f"[INFO] Continuing execution...")
 
 def pull_tile(tile_name):
     run_cmd(f"gsutil -m cp -r gs://regionalinputs/CIRCUMPOLAR/{tile_name} .")
@@ -27,8 +32,38 @@ def split_base_scenario(path_to_folder, tile_name, base_scenario_name):
     run_cmd(f"bp batch split -i {input_path} -b {output_path}  --p 100 --e 2000 --s 200 --t 123 --n 76")
     return output_path
 
+def check_run_completion(folder_path):
+    try:
+        # Run the check_runs.py script and capture output
+        result = subprocess.run(
+            ["python", "check_tile_run_completion.py", folder_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=True
+        )
+
+        # Search for "Overall Completion: XX.XX%"
+        match = re.search(r"Overall Completion:\s+(\d+(?:\.\d+)?)%", result.stdout)
+        if match:
+            completion = float(match.group(1))
+            return completion
+    except subprocess.CalledProcessError:
+        pass
+
+    return None
+
 def run_batch_scenario(split_path):
-    run_cmd(f"bp batch run -b {split_path}")
+    #before submitting batches check for completion
+    completion = check_run_completion(split_path)
+    #if complete,skip: `batch run`
+    if completion == 100.0:
+        print(f"batch_completion = {completion:.2f}%")
+        print(f"Skipping the batch run step")
+    else:
+        print("Could not determine completion.",completion)
+        print(f"Executing batch run... ")
+        run_cmd(f"bp batch run -b {split_path}")
 
 def wait_for_jobs():
     print("[WAIT] Waiting for jobs to finish...")
