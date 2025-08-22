@@ -60,8 +60,8 @@ def check_run_completion(folder_path):
 def run_batch_scenario(split_path):
     #before submitting batches check for completion
     completion = check_run_completion(split_path)
-    #if complete,skip: `batch run`
-    if completion == 100.0:
+    #if complete, or up to 90% complete, then skip: `batch run`
+    if completion > 90.0:
         print(f"batch_completion = {completion:.2f}%")
         print(f"Skipping the batch run step")
     else:
@@ -80,7 +80,7 @@ def wait_for_jobs():
         time.sleep(300)
 
 def merge_and_plot(split_path):
-    plot_file = f"{split_path}/all_merged/summary_plots.pdf"
+    plot_file = Path(f"{split_path}/all_merged/summary_plots.pdf")
     if plot_file.exists():
         print(f"Skipping the merge. {plot_file} exists.")
     else:
