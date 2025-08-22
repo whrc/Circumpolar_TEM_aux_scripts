@@ -33,7 +33,7 @@ def generate_scenarios(tile_name):
 def split_base_scenario(path_to_folder, tile_name, base_scenario_name):
     input_path = f"{path_to_folder}/{tile_name}_sc/{base_scenario_name}"
     output_path = f"{input_path}_split"
-    run_cmd(f"bp batch split -i {input_path} -b {output_path}  --p 100 --e 2000 --s 200 --t 123 --n 76")
+    run_cmd(f"bp batch split -i {input_path} -b {output_path} -sp dask --p 100 --e 2000 --s 200 --t 123 --n 76")
     return output_path
 
 def check_run_completion(folder_path):
@@ -99,7 +99,7 @@ def split_rest_scenarios(path_to_folder, tile_name, base_scenario_name):
     for scenario in scenarios_nosplit:
         input_path = scenario_dir / scenario
         output_path = f"{input_path}_split"
-        run_cmd(f"bp batch split -i {input_path} -b {output_path}")
+        run_cmd(f"bp batch split -i {input_path} -b {output_path} -sp dask")
     return scenarios_nosplit
 
 def modify_new_scenarios(path_to_folder, tile_name, base_scenario_name, scenarios):
