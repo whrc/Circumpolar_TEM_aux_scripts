@@ -321,7 +321,7 @@ This command executes the whole workflow and monitors the job status. (Still tes
 - [x] plot_all_merged_scenarios
 
 ### stats 
-- [x] in check_run stat on min, max exec time, and batch#
+- [ ] in check_run stat on min, max exec time, and batch#
 
 ### Post-analysis (Hélène)
 - [ ] A list of the steps (functional types, benchmarking, etc.)
