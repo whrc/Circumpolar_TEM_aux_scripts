@@ -326,6 +326,14 @@ This command executes the whole workflow and monitors the job status. (Still tes
 ### Post-analysis (Hélène)
 - [ ] A list of the steps (functional types, benchmarking, etc.)
 
+### To update dvm-dos-tem version 
+```bash
+git clone https://github.com/uaf-arctic-eco-modeling/dvm-dos-tem.git 
+cd dvm-dos-tem
+source /dependencies/setup-env.sh
+make USEMPI=true
+```bash
+
 HG: Note related to automation of scenario simulations. 
 1- scnearion and GCM names should be stores in the metadata of the outputs
 2- sets of outputs per scneario should be stored in different directoriies. 
