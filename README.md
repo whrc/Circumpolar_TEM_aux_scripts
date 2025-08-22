@@ -306,19 +306,22 @@ This command executes the whole workflow and monitors the job status. (Still tes
 - [x] Finalize plotting script
 - [x] Automate renaming of gap-filled files
 
-### automation_script (Doğukan)
-- [ ] pull_tile
-- [ ] run_gapfill_script
-- [ ] generate_scenarios
-- [ ] split_base_scenario
-- [ ] run_base_scenarios
-- [ ] wait_for_base_scenarios_to_finish
-- [ ] merge_base_scenarios
-- [ ] split_rest_scenarios
-- [ ] modify_new_scenarios_copy_restart_file
-- [ ] run_rest_scenarios
-- [ ] merge_batches
-- [ ] plot_all_merged_scenarios
+### automation_script (Elchin/Doğukan)
+- [x] pull_tile
+- [x] run_gapfill_script
+- [x] generate_scenarios
+- [x] split_base_scenario
+- [x] run_base_scenarios
+- [x] wait_for_base_scenarios_to_finish
+- [x] merge_base_scenarios
+- [x] split_rest_scenarios
+- [x] modify_new_scenarios_copy_restart_file
+- [x] run_rest_scenarios
+- [x] merge_batches
+- [x] plot_all_merged_scenarios
+
+### stats 
+- [ ] in check_run stat on min, max exec time, and batch#
 
 ### Post-analysis (Hélène)
 - [ ] A list of the steps (functional types, benchmarking, etc.)

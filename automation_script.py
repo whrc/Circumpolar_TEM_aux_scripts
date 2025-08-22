@@ -5,6 +5,7 @@ import time
 import logging
 import argparse
 from pathlib import Path
+import re
 from datetime import datetime
 
 def run_cmd(command, auto_yes=False):
@@ -35,8 +36,38 @@ def split_base_scenario(path_to_folder, tile_name, base_scenario_name):
     run_cmd(f"bp batch split -i {input_path} -b {output_path}  --p 100 --e 2000 --s 200 --t 123 --n 76")
     return output_path
 
+def check_run_completion(folder_path):
+    try:
+        # Run the check_runs.py script and capture output
+        result = subprocess.run(
+            ["python", "~/Circumpolar_TEM_aux_scripts/check_tile_run_completion.py", folder_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=True
+        )
+
+        # Search for "Overall Completion: XX.XX%"
+        match = re.search(r"Overall Completion:\s+(\d+(?:\.\d+)?)%", result.stdout)
+        if match:
+            completion = float(match.group(1))
+            return completion
+    except subprocess.CalledProcessError:
+        pass
+
+    return None
+
 def run_batch_scenario(split_path):
-    run_cmd(f"bp batch run -b {split_path}")
+    #before submitting batches check for completion
+    completion = check_run_completion(split_path)
+    #if complete,skip: `batch run`
+    if completion == 100.0:
+        print(f"batch_completion = {completion:.2f}%")
+        print(f"Skipping the batch run step")
+    else:
+        print("Could not determine completion.",completion)
+        print(f"Executing batch run... ")
+        run_cmd(f"bp batch run -b {split_path}")
 
 def wait_for_jobs():
     logging.info("[WAIT] Waiting for jobs to finish...")
@@ -49,8 +80,12 @@ def wait_for_jobs():
         time.sleep(300)
 
 def merge_and_plot(split_path):
-    run_cmd(f"bp batch merge -b {split_path}", auto_yes=True)
-    run_cmd(f"python ~/Circumpolar_TEM_aux_scripts/plot_nc_all_files.py {split_path}/all_merged/")
+    plot_file = f"{split_path}/all_merged/summary_plots.pdf"
+    if plot_file.exists():
+        print(f"Skipping the merge. {plot_file} exists.")
+    else:
+        run_cmd(f"bp batch merge -b {split_path}", auto_yes=True)
+        run_cmd(f"python ~/Circumpolar_TEM_aux_scripts/plot_nc_all_files.py {split_path}/all_merged/")
 
 def split_rest_scenarios(path_to_folder, tile_name, base_scenario_name):
     scenario_dir = Path(path_to_folder) / f"{tile_name}_sc"
