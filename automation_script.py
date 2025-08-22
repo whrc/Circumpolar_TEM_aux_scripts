@@ -3,6 +3,7 @@ import sys
 import subprocess
 import time
 from pathlib import Path
+import re
 
 def run_cmd(command, auto_yes=False):
     print(f"[RUN] {command}")
