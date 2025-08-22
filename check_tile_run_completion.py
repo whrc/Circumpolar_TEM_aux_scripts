@@ -67,11 +67,16 @@ if __name__ == "__main__":
     for i in range(n_batches):
         output_file = os.path.join(base_folder, f"batch_{i}", "output", "run_status.nc")
         input_mask = os.path.join(base_folder, f"batch_{i}", "input", "run-mask.nc")
-
+        
+        if os.path.exists(input_mask):
+            n_mask = count_run_ones(input_mask)
+            total_n += n_mask
+        else:
+            print(f"{mask_file_path}: File does not exist")
+        
         if os.path.exists(output_file):
             m, n_i = check_run_status(base_folder, output_file, i)
             total_m += m
-            total_n += n_i
 
             runtime = calculate_mean_runtime(output_file)
             if runtime is not None:
