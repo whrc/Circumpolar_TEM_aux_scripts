@@ -60,14 +60,17 @@ def check_run_completion(folder_path):
 def run_batch_scenario(split_path):
     #before submitting batches check for completion
     completion = check_run_completion(split_path)
+
     #if complete, or up to 90% complete, then skip: `batch run`
-    if completion > 90.0:
+    if completion is not None and completion > 90.0:
         print(f"batch_completion = {completion:.2f}%")
-        print(f"Skipping the batch run step")
+        print("Skipping the batch run step")
     else:
-        print("Could not determine completion.",completion)
-        print(f"Executing batch run... ")
+        msg = "Could not determine completion." if completion is None else f"Current completion: {completion:.2f}%."
+        print(msg)
+        print("Executing batch run...")
         run_cmd(f"bp batch run -b {split_path}")
+
 
 def wait_for_jobs():
     logging.info("[WAIT] Waiting for jobs to finish...")
