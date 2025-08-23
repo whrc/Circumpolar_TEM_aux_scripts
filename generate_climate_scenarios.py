@@ -71,11 +71,15 @@ def generate_projected_climate_scenarios(tile_path, output_path):
         if projected_co2_file not in PROJECTED_CO2_FILES:
             print(f"Warning: No matching CO2 file found for {projected_climate_file}")
             continue
-            
+ 
+        # Folder name uses only the climate model/scenario (no CO2 suffix)
+        #folder_name = projected_climate_file.replace("projected-climate_", "").replace(".nc", "")
+        #path = os.path.join(output_path, folder_name)
+
         projected_climate_scenario = projected_climate_file.replace("projected-climate", "").replace(".nc", "").strip("_")
         projected_co2_scenario = projected_co2_file.replace("projected-co2", "").replace(".nc", "").strip("_")
 
-        merged_folder_name = f"{projected_climate_scenario}__{projected_co2_scenario}"
+        merged_folder_name = f"{projected_climate_scenario}"
         path = os.path.join(output_path, merged_folder_name)
         if not os.path.exists(path):
             os.makedirs(path)
