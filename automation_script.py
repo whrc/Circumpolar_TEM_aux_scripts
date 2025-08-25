@@ -28,11 +28,11 @@ def pull_tile(tile_name):
 
 def run_gapfill(tile_name):
     input_tiles_dir="input_tiles"
-    run_cmd(f"python process_climate_data_gapfill.py {input_tiles_dir}/{tile_name}")
+    run_cmd(f"python ~/Circumpolar_TEM_aux_scripts/process_climate_data_gapfill.py {input_tiles_dir}/{tile_name}")
 
 def generate_scenarios(tile_name):
     input_tiles_dir="input_tiles"
-    run_cmd(f"python generate_climate_scenarios.py {input_tiles_dir}/{tile_name} {tile_name}_sc")
+    run_cmd(f"python ~/Circumpolar_TEM_aux_scripts/generate_climate_scenarios.py {input_tiles_dir}/{tile_name} {tile_name}_sc")
 
 def split_base_scenario(path_to_folder, tile_name, base_scenario_name):
     input_path = f"{path_to_folder}/{tile_name}_sc/{base_scenario_name}"
@@ -44,7 +44,7 @@ def check_run_completion(folder_path):
     try:
         # Run the check_runs.py script and capture output
         result = subprocess.run(
-            ["python", "check_tile_run_completion.py", folder_path],
+            ["python", "~/Circumpolar_TEM_aux_scripts/check_tile_run_completion.py", folder_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
@@ -110,7 +110,7 @@ def modify_new_scenarios(path_to_folder, tile_name, base_scenario_name, scenario
     base_folder = f"{path_to_folder}/{tile_name}_sc/{base_scenario_name}_split"
     for scenario in scenarios:
         scenario_folder = f"{path_to_folder}/{tile_name}_sc/{scenario}_split"
-        run_cmd(f"python generate_next_scenario.py {base_folder} {scenario_folder}")
+        run_cmd(f"python ~/Circumpolar_TEM_aux_scripts/generate_next_scenario.py {base_folder} {scenario_folder}")
 
 def process_remaining_scenarios(path_to_folder, tile_name, scenarios):
     for scenario in scenarios:
@@ -126,7 +126,7 @@ def main():
     parser.add_argument("tile_name", help="Tile name, e.g., H10_V16")
     parser.add_argument(
         "--mode",
-        choices=["sc", "full"],
+        choices=["sc", "full", "base"],
         default="sc",
         help="Execution mode: 'sc' runs scenario-only steps; 'full' runs end-to-end.",
     )
