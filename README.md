@@ -273,7 +273,7 @@ For each **region** (e.g., `Alaska`), the following folders must exist:
 #### 🔤 Notation
 
 - **Base scenario**: This refers to the one scenario (e.g., `sp`, `eq`, `pr`) that is run in full (including splitting, batch running, merging, and plotting).
-- Currently, we support **8 scenarios**. Any one of them can serve as the **base scenario** — we choose it at runtime.
+- Currently, we support **8 scenarios**. Any one of them can serve as the **base scenario** — we choose `ssp1_2_6_access_cm2`.
 
 #### 🚀 Running the Script
 
