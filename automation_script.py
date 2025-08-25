@@ -65,7 +65,7 @@ def run_batch_scenario(split_path):
     #before submitting batches check for completion
     completion = check_run_completion(split_path)
     #if complete,skip: `batch run`
-    if completion > 90.0:
+    if completion is not None and completion > 90.0:
         print(f"batch_completion = {completion:.2f}%")
         print(f"Skipping the batch run step")
     else:
