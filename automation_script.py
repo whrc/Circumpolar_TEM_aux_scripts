@@ -23,7 +23,7 @@ def pull_tile(tile_name):
     # Create the input_tiles directory if it doesn't exist
     # This assumes that the cur_dir is a Region (e.g. Alaska)
     input_tiles_dir="input_tiles"
-    os.makedirs(log_dir, exist_ok=True)
+    os.makedirs(input_tiles_dir, exist_ok=True)
     run_cmd(f"gsutil -m cp -r gs://regionalinputs/CIRCUMPOLAR/{tile_name} {input_tiles_dir}/.")
 
 def run_gapfill(tile_name):
