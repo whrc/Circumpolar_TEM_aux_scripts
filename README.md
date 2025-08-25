@@ -92,7 +92,8 @@ Removed tiles with run-status = 0 for all grid cells.
         - summary_plots.pdf
 
 ---
-## Initial Setup
+## Instruction on Step-by-Step Tile Run
+### Initial Setup
 
 1. **Disable DSL in config**  
    Navigate to the `dvm-dos-tem/config/config.js` file and **turn off the DSL setting** for all stages. *(Note: the current `pr` branch may have it enabled.)*
