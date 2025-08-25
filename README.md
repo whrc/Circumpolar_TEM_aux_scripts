@@ -98,7 +98,7 @@ Removed tiles with run-status = 0 for all grid cells.
    Navigate to the `dvm-dos-tem/config/config.js` file and **turn off the DSL setting** for all stages. *(Note: the current `pr` branch may have it enabled.)*
 
 HG: Why? It hasn't clearly been demonstrated that DSL was the reason for any error in the model. Cold climate simulations result in soil thermal computation being very slow, 
-but the cause is very likely the cold climate, not the  DSL. So unless there is more evidence of serious issues with DSL, it should be turned on! We loose a lot of process-based dynamic by turning it off. Furthermore, all calibrations have been conducted with DSL on.
+but the cause is very likely the cold climate, not the  DSL. So, unless there is more evidence of serious issues with DSL, it should be turned on! We loose a lot of process-based dynamic by turning it off. Furthermore, all calibrations have been conducted with DSL on.
 
 2. **Create Alaska Working Directory**  
    On `/mnt/exacloud`, create your working folder using your username:
@@ -245,14 +245,100 @@ python orchestrate_scenarios.py --path-to-folder /mnt/exacloud/ejafarov_woodwell
 --tile-dir H10_V14_sc --new-scenario-script generate_next_scenario.py
 ```
 
-### Automation of the steps 1-8, next scenario, and the rest of the scenarios 
-See [automation_script](#automation_script)
+---
 
-Navigate to the folder that includes all the Python scripts required to run Steps **1** through **8** and **Next Scenario**.
+### Instructions for Running the Automation Script
+#### Automation of the steps 1-8, next scenario, and the rest of the scenarios 
+
+Before running the automation script, please ensure that the **folder structure** is properly set up. Refer to [**Scenario Run Folder Structure**](#scenario-run-folder-structure) for full details.
+
+#### 📁 Folder Structure
+
+For each **region** (e.g., `Alaska`), the following folders must exist:
+
+- `input_tiles/` — contains the original input tiles
+- `tile#ids_sc/` — subfolders for each tile, e.g.:
+  - `H10_V14_sc/`
+  - `H10_V15_sc/`
+  - `H10_V16_sc/`
+- `LOG/` — `run_tiles.py` will automatically create it if it doesn’t exist
+
+> ⚠️ In the future, `tile#ids_sc` folders will be moved into corresponding **case folders**, such as:
+> - `olt_const/`
+> - `olt_nonconst/`
+> - `olt_nonconst_fire/`
+> - ...
+
+#### 🔤 Notation
+
+- **Base scenario**: This refers to the one scenario (e.g., `sp`, `eq`, `pr`) that is run in full (including splitting, batch running, merging, and plotting).
+- Currently, we support **8 scenarios**. Any one of them can serve as the **base scenario** — we choose it at runtime.
+
+#### 🚀 Running the Script
+
+You can run the automation in different modes depending on your needs:
+
+#### 🔁 Full Mode — Run Base + All Others
 ```bash
-python automation_script.py tile_name
+python automation_script.py {tile#} --mode full
 ```
-This command executes the whole workflow and monitors the job status. (Still testing)
+
+#### 🧱 Base-Only Mode — Run Only the Base Scenario
+```bash
+python automation_script.py {tile#} --mode base
+```
+
+#### 🔄 Scenario-Only Mode — Run the Remaining 7 Scenarios
+```bash
+python automation_script.py {tile#} --mode sc
+```
+
+Replace `{tile#}` with the tile ID, e.g. `H11_V15`.
+
+#### 🧵 Running Multiple Tiles in Background (with `screen`)
+
+To run tiles without losing progress if your SSH connection is interrupted:
+
+1. Start a new screen session:
+   ```bash
+   screen
+   ```
+
+2. Run your tile batch script:
+   ```bash
+   python run_tiles.py
+   ```
+
+3. Detach from the screen (keep it running in background):
+   - Press `Ctrl + A`, then `D`
+
+4. Reattach to your screen session later:
+   ```bash
+   screen -r
+   ```
+
+#### ✍️ Editing the `run_tiles.py` Script
+
+Open `run_tiles.py` and modify this list:
+
+```python
+scs = ["H11_V15", "H11_V16", "H11_V17", ...]
+```
+
+Include the tile IDs you want to process. This script will:
+
+- Run each tile in **`--mode sc`**
+- Save output logs into the `LOG/` folder (automatically created if missing)
+- Log file names will follow the pattern:  
+  `LOG/H11_V15.log`, `LOG/H11_V16.log`, etc.
+
+You can monitor progress by checking each corresponding log file:
+
+```bash
+tail -f LOG/H11_V15.log
+```
+
+---
 
 ## Stage II: Canada Tiles [constant OLT]
 
