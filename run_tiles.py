@@ -20,6 +20,6 @@ os.makedirs(log_dir, exist_ok=True)
 
 for tile in scs:
     log_file = os.path.join(log_dir, f"{tile}.log")
-    cmd = f"python automation_script_v1.py {tile} --mode sc > {log_dir}/{log_file} 2>&1"
+    cmd = f"python automation_script_v1.py {tile} --mode sc > {log_file} 2>&1"
     print(f"Running: {cmd}")
     subprocess.run(cmd, shell=True)
