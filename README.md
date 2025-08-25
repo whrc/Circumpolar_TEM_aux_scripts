@@ -1,7 +1,7 @@
 
 # 🧊 Circumpolar Run Work Plan
 
-This document serves as a comprehensive work plan and operational guide for managing, processing, and automating large-scale Circumpolar simulations using the DVM-DOS-TEM model. Below is a high-level summary with links to relevant sections:
+This document serves as a comprehensive work plan and operational guide for managing, processing, and automating large-scale Circumpolar simulations using the DVM-DOS-TEM model. Below is a summary with links to relevant sections:
 
 ## 🔗 Quick Navigation
 
@@ -13,20 +13,6 @@ This document serves as a comprehensive work plan and operational guide for mana
 - [Canada Stage II Tile Mapping](#stage-ii-canada-tiles-constant-olt)
 - [To-Do and Automation Checklist](#to-do)
 
-## 🧾 Highlights
-
-- Documents full workflow from gap-filling and batch submission to plotting.
-- Defines and visualises empty tiles using maps and examples.
-- Clarifies DSL setting tradeoffs with expert commentary.
-- Provides structured directory expectations for consistent output management.
-- Introduces automation via `automation_script.py` and `run_tiles.py`.
-- Uses `screen` to enable resilient long-run job handling.
-- Details restart-handling for scenario chaining (`generate_next_scenario.py`).
-- Lists and assigns Canadian domain tiles for Stage II runs.
-- Includes a clear development checklist for scripting and post-processing.
-
-
-Tools for the DVM-DOS-TEM Circumpolar run input/output data processing. 
 
 ## The map of the Circumpolar
 
