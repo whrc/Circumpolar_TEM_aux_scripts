@@ -1,5 +1,5 @@
 
-# 📝 Annotation
+# 🧊 Circumpolar Run Work Plan
 
 This document serves as a comprehensive work plan and operational guide for managing, processing, and automating large-scale Circumpolar simulations using the DVM-DOS-TEM model. Below is a high-level summary with links to relevant sections:
 
@@ -27,8 +27,6 @@ This document serves as a comprehensive work plan and operational guide for mana
 
 
 Tools for the DVM-DOS-TEM Circumpolar run input/output data processing. 
-
-# Circumpolar Run Work Plan
 
 ## The map of the Circumpolar
 
@@ -440,6 +438,7 @@ tail -f LOG/H11_V15.log
 
 ### Post-analysis (Hélène)
 - [ ] A list of the steps (functional types, benchmarking, etc.)
+- [ ] Development of the global merge script
 
 ### To update dvm-dos-tem version 
 ```bash
@@ -447,7 +446,7 @@ git clone https://github.com/uaf-arctic-eco-modeling/dvm-dos-tem.git
 cd dvm-dos-tem
 source /dependencies/setup-env.sh
 make USEMPI=true
-```bash
+```
 
 HG: Note related to automation of scenario simulations. 
 1- scnearion and GCM names should be stores in the metadata of the outputs
