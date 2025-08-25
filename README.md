@@ -6,7 +6,7 @@ This document serves as a comprehensive work plan and operational guide for mana
 ## 🔗 Quick Navigation
 
 - [Circumpolar Overview and Empty Tiles](#the-map-of-the-circumpolar)
-- [Initial and Final Tile Assignments](#initial-tile-workload-assignment)
+- [Alaska Stage I Tiles Mapping](#stage-i-alaska-tiles-constant-olt)
 - [Scenario Run Folder Structure](#scenario-run-folder-structure)
 - [Step-by-Step Tile Run Instructions](#instruction-on-step-by-step-tile-run)
 - [Automated Runs Using Scripts](#instructions-for-running-the-automation-script)
