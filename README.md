@@ -433,12 +433,16 @@ cd dvm-dos-tem
 source /dependencies/setup-env.sh
 make USEMPI=true
 ```
+### Extracting gridcell from the batch  
+```bash
+bp extract_cell --input-path batch_#/input --output-path <path-to-output> -X x -Y y --p 100 --e 2000 --s 200 --t 123 --n 76
+```
 
 HG: Note related to automation of scenario simulations. 
-1- scnearion and GCM names should be stores in the metadata of the outputs
-2- sets of outputs per scneario should be stored in different directoriies. 
-Directory name should include the name of the scenario and GCM
-3- path to restart files should be included in the config file so there is
+1- scenario and GCM names should be stored in the metadata of the outputs
+2- sets of outputs per scenario should be stored in different directories. 
+The directory name should include the name of the scenario and GCM
+3- path to restart files should be included in the config file, so there is
 no more need to copy the restart file in every scenario output directory...
 
 
