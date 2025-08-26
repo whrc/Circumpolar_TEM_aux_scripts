@@ -437,6 +437,10 @@ make USEMPI=true
 ```bash
 bp extract_cell --input-path batch_#/input --output-path <path-to-output> -X x -Y y --p 100 --e 2000 --s 200 --t 123 --n 76
 ```
+### Resubmitting failed batches  
+```bash
+python <path_to_folder>/resubmit_unfinished.py H7_V15_sc/ssp1_2_6_access_cm2_split/
+```
 
 HG: Note related to automation of scenario simulations. 
 1- scenario and GCM names should be stored in the metadata of the outputs
