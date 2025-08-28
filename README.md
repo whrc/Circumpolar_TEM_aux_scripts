@@ -46,7 +46,7 @@ vegetation map in the sourthern most regions (see example 3 below)
 
 Here we outline the workflow for processing tiles for the Alaska region. Some of the tiles overlap with Canada.
 
-![Map of Alaska tiles](ak_can.jpg)
+![Map of Alaska tiles](ak_can.png)
 
 ---
 
