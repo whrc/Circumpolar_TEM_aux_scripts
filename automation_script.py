@@ -90,7 +90,7 @@ def merge_and_plot(split_path):
         print(f"Skipping the merge. {plot_file} exists.")
     else:
         run_cmd(f"bp batch merge -b {split_path}", auto_yes=True)
-        run_cmd(f"python plot_nc_all_files.py {split_path}/all_merged/")
+        run_cmd(f"python ~/Circumpolar_TEM_aux_scripts/plot_nc_all_files.py {split_path}/all_merged/")
 
 def split_rest_scenarios(path_to_folder, tile_name, base_scenario_name):
     scenario_dir = Path(path_to_folder) / f"{tile_name}_sc"
