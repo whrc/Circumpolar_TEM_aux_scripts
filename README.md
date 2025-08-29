@@ -42,9 +42,11 @@ vegetation map in the sourthern most regions (see example 3 below)
 ![Example of an empty tile](empty_tile_example3.jpeg)
 
 
-## Stage I: Alaska Tiles [constant OLT]
+## Stage I: Alaska Tiles (dynamic OLT) [olt-noncost]
 
-This document outlines the workflow for processing Alaska tiles as part of the Circumpolar run.
+Here we outline the workflow for processing tiles for the Alaska region. Some of the tiles overlap with Canada.
+
+![Map of Alaska tiles](ak_can.png)
 
 ---
 
