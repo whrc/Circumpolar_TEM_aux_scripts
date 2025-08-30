@@ -1,4 +1,4 @@
-afrom textwrap import shorten
+from textwrap import shorten
 import subprocess
 import os
 
@@ -14,13 +14,13 @@ scs = [
 log_dir = "LOG"
 os.makedirs(log_dir, exist_ok=True)
 
-# Print header
-print(f"| {'Path to Tile':<40} | {'# Completed Cells':^19} | {'# Total Cells':^16} | {'Completion (%)':^16} | {'Mean Run Time (s)':^19} |")
-print(f"|{'-'*42}|{'-'*21}|{'-'*18}|{'-'*18}|{'-'*21}|")
+# Print header with ID column
+print(f"| {'ID':^3} | {'Path to Tile':<40} | {'# Completed Cells':^19} | {'# Total Cells':^16} | {'Completion (%)':^16} | {'Mean Run Time (s)':^19} |")
+print(f"|{'-'*5}|{'-'*42}|{'-'*21}|{'-'*18}|{'-'*18}|{'-'*21}|")
 
-for tile in scs:
+for idx, tile in enumerate(scs, 1):
     path = f"{tile}_sc/ssp1_2_6_access_cm2_split"
-    cmd = f"python check_tile_run_completion.py {path}"
+    cmd = f"python ~/Circumpolar_TEM_aux_scripts/check_tile_run_completion.py {path}"
 
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
@@ -35,7 +35,6 @@ for tile in scs:
             line = line.strip()
 
             if line.replace(" ", "").isdigit() and " " in line:
-                # e.g. "689 689"
                 parts = line.split()
                 if len(parts) == 2:
                     completed_cells, total_cells = parts
@@ -46,7 +45,7 @@ for tile in scs:
             elif "Mean total runtime" in line:
                 mean_runtime = line.split(":")[-1].strip().replace("seconds", "")
 
-        print(f"| {path:<40} | {completed_cells:^19} | {total_cells:^16} | {completion:^16} | {mean_runtime:^19} |")
+        print(f"| {idx:^3} | {path:<40} | {completed_cells:^19} | {total_cells:^16} | {completion:^16} | {mean_runtime:^19} |")
 
     except Exception as e:
-        print(f"| {path:<40} | {'ERROR':^19} | {'ERROR':^16} | {'ERROR':^16} | {'ERROR':^19} |")
+        print(f"| {idx:^3} | {path:<40} | {'ERROR':^19} | {'ERROR':^16} | {'ERROR':^16} | {'ERROR':^19} |")
