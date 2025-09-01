@@ -452,4 +452,19 @@ The directory name should include the name of the scenario and GCM
 no more need to copy the restart file in every scenario output directory...
 
 
+### Merging tile outputs [HG]
+
+I wrote a python script that would loop through all the outputs tiles in a directory and merge the output tiles into single files per variable. This script needs:
+1- all batch outputs per tile to be merged.
+2- historical simulations to be stored in a specific directory (called tr preferably)
+3- simulations to be done with dvm-dos-tem version 0.8.3, branch names new_outspec. Here is the path to the branch: https://github.com/uaf-arctic-eco-modeling/dvm-dos-tem/tree/new_outspec/
+
+The script has a summary function that will summarize output variables is turned on.
+
+The script is very crude at the moment, but it works. Give it a try and let me know what it works for you.
+
+The script is stored in our input_production repository, in the branch named merge_tile_outputs. Here is the git path to the branch: https://github.com/uaf-arctic-eco-modeling/Input_production/tree/merge_tile_outputs
+The script is stored in ./utils/merge_out_synth.py
+
+
 
