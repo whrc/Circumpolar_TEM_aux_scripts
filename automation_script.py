@@ -39,6 +39,63 @@ def remove_tile(tile_name):
     else:
         print(f"[INFO] Tile directory {tile_path} not found, skipping removal")
 
+def conform_runmask(tile_name):
+    """Run runmask.py to conform masks to available parameters for all scenarios."""
+    print("[RUNMASK] Conforming run masks to available parameters...")
+    
+    # Set up environment with PYTHONPATH
+    env = os.environ.copy()
+    dvm_scripts_path = os.path.expanduser("~/dvm-dos-tem/scripts")
+    if "PYTHONPATH" in env:
+        env["PYTHONPATH"] = f"{dvm_scripts_path}:{env['PYTHONPATH']}"
+    else:
+        env["PYTHONPATH"] = dvm_scripts_path
+    
+    # Parameters directory
+    params_dir = os.path.expanduser("~/dvm-dos-tem/parameters/")
+    runmask_script = os.path.expanduser("~/dvm-dos-tem/scripts/util/runmask.py")
+    
+    # Find all scenario directories
+    scenario_base_dir = f"{tile_name}_sc"
+    if not os.path.exists(scenario_base_dir):
+        print(f"[WARNING] Scenario directory {scenario_base_dir} not found, skipping runmask")
+        return
+    
+    for scenario_dir in os.listdir(scenario_base_dir):
+        scenario_path = os.path.join(scenario_base_dir, scenario_dir)
+        if os.path.isdir(scenario_path) and not scenario_dir.endswith("_split"):
+            vegetation_file = os.path.join(scenario_path, "vegetation.nc")
+            runmask_file = os.path.join(scenario_path, "run-mask.nc")
+            
+            if os.path.exists(vegetation_file) and os.path.exists(runmask_file):
+                print(f"[RUNMASK] Processing scenario: {scenario_dir}")
+                cmd = [
+                    "python", runmask_script,
+                    "--conform-mask-to-available-params",
+                    params_dir,
+                    vegetation_file,
+                    runmask_file
+                ]
+                try:
+                    subprocess.run(cmd, env=env, check=True)
+                    
+                    # Replace original run-mask.nc with the filtered version
+                    filtered_runmask_file = os.path.join(scenario_path, "run-mask_cmtfilter.nc")
+                    if os.path.exists(filtered_runmask_file):
+                        print(f"[RUNMASK] Replacing run-mask.nc with filtered version for {scenario_dir}")
+                        os.remove(runmask_file)  # Remove original
+                        os.rename(filtered_runmask_file, runmask_file)  # Rename filtered to original name
+                        print(f"[RUNMASK] Successfully updated run-mask.nc for {scenario_dir}")
+                    else:
+                        print(f"[WARNING] Expected filtered file run-mask_cmtfilter.nc not found for {scenario_dir}")
+                        
+                except subprocess.CalledProcessError as e:
+                    print(f"[ERROR] Runmask failed for {scenario_dir}: {e}")
+            else:
+                print(f"[WARNING] Missing vegetation.nc or run-mask.nc in {scenario_dir}")
+    
+    print("[RUNMASK] Completed runmask conforming")
+
 def run_gapfill(tile_name):
     input_tiles_dir="input_tiles"
     run_cmd(f"python ~/Circumpolar_TEM_aux_scripts/process_climate_data_gapfill.py {input_tiles_dir}/{tile_name}")
@@ -50,7 +107,7 @@ def generate_scenarios(tile_name):
 def split_base_scenario(path_to_folder, tile_name, base_scenario_name):
     input_path = f"{path_to_folder}/{tile_name}_sc/{base_scenario_name}"
     output_path = f"{input_path}_split"
-    run_cmd(f"bp batch split -i {input_path} -b {output_path} --p 100 --e 2000 --s 200 --t 123 --n 76")
+    run_cmd(f"bp batch split -i {input_path} -b {output_path} --p 100 --e 2000 --s 200 --t 124 --n 76")
     return output_path
 
 def check_run_completion(folder_path):
@@ -161,6 +218,7 @@ def main():
         pull_tile(tile_name)
         run_gapfill(tile_name)
         generate_scenarios(tile_name)
+        conform_runmask(tile_name)
         remove_tile(tile_name)
 
         # full pipeline uses your splitter to derive the base scenario path
@@ -182,6 +240,7 @@ def main():
         pull_tile(tile_name)
         run_gapfill(tile_name)
         generate_scenarios(tile_name)
+        conform_runmask(tile_name)
         remove_tile(tile_name)
 
         # full pipeline uses your splitter to derive the base scenario path
