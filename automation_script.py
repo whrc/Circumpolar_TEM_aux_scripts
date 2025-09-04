@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 import re
 import argparse
+import shutil
 
 def run_cmd(command, auto_yes=False):
     print(f"[RUN] {command}")
@@ -25,6 +26,18 @@ def pull_tile(tile_name):
     input_tiles_dir="input_tiles"
     os.makedirs(input_tiles_dir, exist_ok=True)
     run_cmd(f"gsutil -m cp -r gs://regionalinputs/CIRCUMPOLAR/{tile_name} {input_tiles_dir}/.")
+
+def remove_tile(tile_name):
+    """Remove the downloaded tile to save space after processing."""
+    input_tiles_dir = "input_tiles"
+    tile_path = os.path.join(input_tiles_dir, tile_name)
+    
+    if os.path.exists(tile_path):
+        print(f"[CLEANUP] Removing tile directory: {tile_path}")
+        shutil.rmtree(tile_path)
+        print(f"[CLEANUP] Successfully removed {tile_path}")
+    else:
+        print(f"[INFO] Tile directory {tile_path} not found, skipping removal")
 
 def run_gapfill(tile_name):
     input_tiles_dir="input_tiles"
@@ -148,6 +161,7 @@ def main():
         pull_tile(tile_name)
         run_gapfill(tile_name)
         generate_scenarios(tile_name)
+        remove_tile(tile_name)
 
         # full pipeline uses your splitter to derive the base scenario path
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
@@ -168,6 +182,7 @@ def main():
         pull_tile(tile_name)
         run_gapfill(tile_name)
         generate_scenarios(tile_name)
+        remove_tile(tile_name)
 
         # full pipeline uses your splitter to derive the base scenario path
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
