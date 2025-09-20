@@ -11,9 +11,8 @@ import pandas as pd
 import numpy as np
 import glob
 import argparse
-# import sys
 
-
+#Usage example: python merge.py Alaska ssp1_2_6_mri_esm2_0 --temdir path_to_outspec_file
 # List of emission scenarios
 #sclist = ['ssp1_2_6','ssp2_4_5','ssp3_7_0','ssp5_8_5']
 # List of global climate model
@@ -68,32 +67,28 @@ layersynth = args.layersynth
 os.makedirs(synthdir, exist_ok=True)
 
 
-
-
-
-
 #### LISTINGS ####
 
 ### Listing available tiles and output variables for the specified scenario
 tilelist = []
 outflist = []
 
-# Find all tile directories with pattern *_sc
-for item in os.listdir(base_path):
-    if (os.path.isdir(os.path.join(base_path, item))) & (item.endswith('_sc')) & (not item.startswith('.')):
-        tile_path = os.path.join(base_path, item)
-        # Check if the scenario directory exists
-        scenario_path = os.path.join(tile_path, scenario)
-        # Check if the split/all_merged directory exists
-        split_path = os.path.join(tile_path, scenario + '_split', 'all_merged')
-        if os.path.exists(scenario_path) and os.path.exists(split_path):
-            tilelist.append(item)
-            # Get output files from this tile's all_merged directory
-            for outf in os.listdir(split_path):
-                if (os.path.isfile(os.path.join(split_path, outf))) & (outf.endswith('.nc')) & (not outf.startswith('.')):
-                    # Skip restart files and run_status
-                    if outf not in ['restart-sc.nc', 'restart-tr.nc', 'run_status.nc']:
-                        outflist.append(outf)
+# Find all tile directories (looking for H10_V## pattern instead of *_sc)
+scenario_path = os.path.join(base_path, scenario)
+if os.path.exists(scenario_path):
+    for item in os.listdir(scenario_path):
+        if (os.path.isdir(os.path.join(scenario_path, item))) & (not item.startswith('.')):
+            tile_path = os.path.join(scenario_path, item)
+            # Check if the all_merged directory exists
+            all_merged_path = os.path.join(tile_path, 'all_merged')
+            if os.path.exists(all_merged_path):
+                tilelist.append(item)
+                # Get output files from this tile's all_merged directory
+                for outf in os.listdir(all_merged_path):
+                    if (os.path.isfile(os.path.join(all_merged_path, outf))) & (outf.endswith('.nc')) & (not outf.startswith('.')):
+                        # Skip restart files and run_status
+                        if outf not in ['restart-sc.nc', 'restart-tr.nc', 'restart-eq.nc', 'restart-sp.nc', 'restart-pr.nc', 'run_status.nc']:
+                            outflist.append(outf)
 
 # Process the lists
 outflist = list(set(outflist))
@@ -105,8 +100,6 @@ for tile in tilelist:
 print(f"Found {len(varlist)} variables: {varlist}")
 
 
-
-
 #### CREATE CANVAS ####
 
 ### Get the extent of all the tiles 
@@ -116,7 +109,7 @@ yminlist = []
 ymaxlist = []
 for tile in tilelist:
     # Path to the run-mask.nc file for this tile and scenario
-    mask_path = os.path.join(base_path, tile, scenario, 'run-mask.nc')
+    mask_path = os.path.join(base_path, scenario, tile, 'run-mask.nc')
     if os.path.exists(mask_path):
         mask = xr.open_dataset(mask_path)
         # Handle different coordinate naming conventions
@@ -135,10 +128,12 @@ for tile in tilelist:
             ymaxlist.append(mask.y.max().values.item())
         mask.close()
 
+print('yminlist: ' + str(yminlist) + ' ymaxlist: ' + str(ymaxlist) + ' xminlist: ' + str(xminlist) + ' xmaxlist: ' + str(xmaxlist))
+
 ### Create the canvas from the first available mask, cropped to total extent
 # Use the first tile's mask as the template and extend it to cover all tiles
 first_tile = tilelist[0]
-template_mask_path = os.path.join(base_path, first_tile, scenario, 'run-mask.nc')
+template_mask_path = os.path.join(base_path, scenario, first_tile, 'run-mask.nc')
 template_mask = xr.open_dataset(template_mask_path)
 
 # Determine coordinate names
@@ -158,20 +153,20 @@ template_mask.close()
 print(f"Canvas created with extent: x=[{min(xminlist):.2f}, {max(xmaxlist):.2f}], y=[{min(yminlist):.2f}, {max(ymaxlist):.2f}]")
 
 
-
-
-
 #### MERGING OUTPUTS ####
 
 ### Reading the outvarlist file to a dataframe (if it exists)
 ovl = None
-if os.path.exists(os.path.join(temdir, 'config', 'output_spec.csv')):
-    ovl = pd.read_csv(os.path.join(temdir, 'config', 'output_spec.csv'))
+if os.path.exists(os.path.join(temdir, 'output_spec.csv')):
+    ovl = pd.read_csv(os.path.join(temdir, 'output_spec.csv'))
     print("Loaded output specification file")
 else:
     print("Warning: output_spec.csv not found, synthesis options will be disabled")
+    print(os.path.join(temdir, 'output_spec.csv'), 'does not exist')
+    sys.exit()
 
-## Variable loop
+
+## Variable loop 
 for var in varlist:
     print(f'Processing variable: {var}')
     tempres = None
@@ -181,8 +176,8 @@ for var in varlist:
         print(f'  Processing tile {t+1}/{len(tilelist)}: {tile}')
         
         # Construct path to the all_merged directory for this tile and scenario
-        all_merged_dir = os.path.join(base_path, tile, scenario + '_split', 'all_merged')
-        
+        all_merged_dir = os.path.join(base_path, scenario, tile, 'all_merged')
+
         # Find the variable file
         var_files = glob.glob(os.path.join(all_merged_dir, var + '*.nc'))
         if not var_files:
@@ -190,15 +185,24 @@ for var in varlist:
             continue
             
         var_file = var_files[0]  # Take the first match
-        
+ 
         # Read in the tile data and mask
         try:
             out = xr.open_dataset(var_file)
-            mask_file = os.path.join(base_path, tile, scenario, 'run-mask.nc')
+            
+            # Convert -9999 fill values to NaN for VEGC variable
+            if var in out.variables:
+                out[var] = out[var].where(out[var] != -9999, np.nan)
+                print(f'    Converted -9999 values to NaN for {var}')
+            
+            #NB!here might be a problem, this mask file is for input, where in our case we might need mask file for output
+            #so we might need to merge the mask file from split outputs
+            mask_file = os.path.join(base_path, scenario, tile, 'run-mask.nc')
             msk = xr.open_dataset(mask_file)
             
             # Read in temporal resolution from filename
             tempres = os.path.basename(var_file).split('_')[1]
+        
             
             # Apply synthesis operations if output spec is available
             if ovl is not None and var in ovl['Name'].values:
@@ -238,17 +242,17 @@ for var in varlist:
             y_coord = 'Y' if 'Y' in msk.coords else 'y'
             
             out = out.assign_coords(x=("x", msk[x_coord].values), y=("y", msk[y_coord].values))
-            
+                     
             # Create the canvas dataset for combining (only for first tile)
             if t == 0:
                 # Get fill value from output file
                 varfv = out[var].encoding.get('_FillValue')
                 if varfv is None:
                     varfv = np.nan
-                    
+
                 # Identify dimensions associated with this variable
                 dimname = list(out[var].dims)
-                
+                           
                 # Create the empty dataset that will be the canvas for combining tiles
                 dimlengthlist = []
                 for dim in dimname:
@@ -258,8 +262,8 @@ for var in varlist:
                         l = crop_mask[y_coord].shape[0]
                     else:
                         l = out[dim].shape[0]
-                    dimlengthlist.append(l)
-                
+                    dimlengthlist.append(l)            
+
                 # Create the coordinates dataset
                 coords = {}
                 for i in range(len(dimname)):
@@ -273,6 +277,7 @@ for var in varlist:
                 # Create the variable dataset
                 data_vars = {var: (tuple(dimname), np.full(tuple(dimlengthlist), varfv))}
                 
+                
                 # Create the canvas
                 canevas = xr.Dataset(data_vars, coords=coords)
                 canevas.attrs = out.attrs
@@ -283,22 +288,25 @@ for var in varlist:
             
             # Combining the tile dataset to the canvas
             canevas = out.combine_first(canevas)
+
             
             # Close datasets to free memory
             out.close()
             msk.close()
             
+            
         except Exception as e:
             print(f'    Error processing tile {tile}: {e}')
             continue
-    
+    print('********************************************************')
+
     # Finalize the canvas coordinates and save
     if 'canevas' in locals():
         canevas['y'] = crop_mask[y_coord]
         canevas['x'] = crop_mask[x_coord]
         canevas['x'].attrs = crop_mask[x_coord].attrs
         canevas['y'].attrs = crop_mask[y_coord].attrs
-        
+               
         # Create output filename
         output_filename = f"{var}_{scenario}_{tempres}.nc"
         output_path = os.path.join(synthdir, output_filename)
