@@ -90,7 +90,7 @@ def plot_variable(nc_file, variable_name):
             fig, axes = plt.subplots(1, 3, figsize=(12, 5))
 
             # Plot var_data at first time step
-            im0 = axes[0].imshow(var_data[0,:,:], cmap="viridis", origin="lower", aspect="auto")
+            im0 = axes[0].imshow(np.fliplr(var_data[0,:,:].T), cmap="viridis", origin="lower", aspect="auto")
             axes[0].set_title(f"{variable_name} - First Year")
             axes[0].set_xlabel("X")
             axes[0].set_ylabel("Y")
@@ -99,7 +99,7 @@ def plot_variable(nc_file, variable_name):
             fig.colorbar(im0, ax=axes[0], label=f"{variable_name} ({units})" if units else variable_name)
 
             # Plot var_data at last time step
-            imN = axes[1].imshow(var_data[-1,:,:], cmap="viridis", origin="lower", aspect="auto")
+            imN = axes[1].imshow(np.fliplr(var_data[-1,:,:].T), cmap="viridis", origin="lower", aspect="auto")
             axes[1].set_title(f"{variable_name} - Last Year")
             axes[1].set_xlabel("X")
             axes[1].set_ylabel("Y")

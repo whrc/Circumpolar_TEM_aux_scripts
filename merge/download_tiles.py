@@ -79,18 +79,25 @@ def download_tile(region, scenario_name, tile_id, scenario_dir):
     """
     tile_dir = Path(scenario_dir) / tile_id
     
-    # Check if tile directory already exists
-    if tile_dir.exists():
+    # Check if tile directory with all_merged already exists
+    if (tile_dir / "all_merged").exists():
         print(f"Tile {tile_id} already exists at {tile_dir}")
         return True
     
     print(f"Downloading tile {tile_id}...")
     
-    # Create tile directory
-    tile_dir.mkdir(exist_ok=True)
+    # Create tile directory if it doesn't exist
+    if not tile_dir.exists():
+        tile_dir.mkdir(parents=True)
     
     # Download all_merged directory
-    all_merged_source = f"gs://circumpolar_model_output/{region}-v1/merged_tiles/{scenario_name}/{tile_id}/all_merged"
+    odl_tile_list = ["H5_V15", "H5_V16","H6_V15", "H6_V16","H7_V15", "H7_V16",
+                    "H8_V14", "H9_V14", "H11_V15" ]
+    if tile_id in old_tile_list:
+        all_merged_source = f"gs://circumpolar_model_output/{region}/olt_nonconst/{tile_id}_sc_split/{scenario_name}_split/all_merged"
+    else:
+        all_merged_source = f"gs://circumpolar_model_output/{region}-v1/merged_tiles/{scenario_name}/{tile_id}/all_merged"
+ 
     all_merged_dest = str(tile_dir)
     
     gsutil_cmd1 = ["gsutil", "-m", "cp", "-r", all_merged_source, all_merged_dest]
@@ -119,13 +126,14 @@ def main():
     
     # Configuration
     region = "Alaska"
-    scenario_name = "ssp1_2_6_mri_esm2_0"
+    scenario_name = "ssp1_2_6_access_cm2" #"ssp1_2_6_mri_esm2_0"
     tile_list = ['H10_V14', 'H10_V15', 'H10_V16','H10_V17','H10_V18','H10_V19',
                 'H11_V14', 'H11_V15', 'H11_V16','H11_V17','H11_V18',
                 "H8_V14", "H8_V15", "H8_V16", "H8_V17", "H8_V18",
                 "H5_V15", "H9_V14","H5_V16", "H9_V15","H6_V15", "H9_V16",
-                "H6_V16", "H9_V17","H7_V15", "H9_V18","H7_V16", "H9_V19"
-    ]
+                "H6_V16", "H9_V17","H7_V15", "H9_V18","H7_V16", "H9_V19",
+                "H5_V15", "H5_V16","H6_V15", "H6_V16","H7_V15", "H7_V16",
+                "H8_V14", "H9_V14", "H11_V15" ]
 
     print(f"Starting tile download process...")
     print(f"Region: {region}")
