@@ -18,6 +18,18 @@ The merging process consists of two main steps:
 
 ## Instructions
 
+### Step 0: Setup Environment (Before Starting)
+
+Before running any scripts, create and activate the conda environment:
+
+```bash
+# Create the environment with a custom name
+conda env create -f environment.yml -n merge_env
+
+# Activate the environment
+conda activate merge_env
+```
+
 ### Step 1: Download Tiles
 
 1. **Configure the download script**: Edit `download_tiles.py` to specify your desired:
