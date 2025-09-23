@@ -131,6 +131,12 @@ def check_run_completion(folder_path):
 
     return None
 
+def run_resubmit_unfinished_jobs(split_path):
+    """Run the resubmit_unfinished.py script to resubmit any unfinished jobs."""
+    print(f"[RESUBMIT] Checking for unfinished jobs in {split_path}")
+    resubmit_script = os.path.expanduser("~/Circumpolar_TEM_aux_scripts/resubmit_unfinished.py")
+    run_cmd(f"python {resubmit_script} {split_path}")
+
 def run_batch_scenario(split_path):
     #before submitting batches check for completion
     completion = check_run_completion(split_path)
@@ -142,6 +148,7 @@ def run_batch_scenario(split_path):
         print("Could not determine completion.",completion)
         print(f"Executing batch run... ")
         run_cmd(f"bp batch run -b {split_path}")
+    run_resubmit_unfinished_jobs(split_path)
 
 def wait_for_jobs():
     print("[WAIT] Waiting for jobs to finish...")
@@ -186,8 +193,21 @@ def process_remaining_scenarios(path_to_folder, tile_name, scenarios):
     for scenario in scenarios:
         split_path = f"{path_to_folder}/{tile_name}_sc/{scenario}_split"
         run_batch_scenario(split_path)
+        
         wait_for_jobs()
         merge_and_plot(split_path)
+
+def finalize(path_to_folder, tile_name):
+    """Copy the results to Google Cloud Storage once the run is finished."""
+    print(f"[FINALIZE] Copying results to Google Cloud Storage for {tile_name}")
+    source_path = f"{path_to_folder}/{tile_name}_sc"
+    destination_path = f"gs://circumpolar_model_output/recent/{tile_name}"
+    
+    if os.path.exists(source_path):
+        run_cmd(f"gsutil -m cp -r {source_path} {destination_path}")
+        print(f"[FINALIZE] Successfully copied {source_path} to {destination_path}")
+    else:
+        print(f"[ERROR] Source path {source_path} does not exist, skipping finalize step")
 
 def main():
     parser = argparse.ArgumentParser(
@@ -254,11 +274,13 @@ def main():
 
         # use path_to_folder for base_split_path as requested
         base_split_path = f"{path_to_folder}/{tile_name}_sc/{base_scenario_name}"
-
         scenarios = split_rest_scenarios(path_to_folder, tile_name, base_scenario_name)
         print(scenarios)
         modify_new_scenarios(path_to_folder, tile_name, base_scenario_name, scenarios)
         process_remaining_scenarios(path_to_folder, tile_name, scenarios)
+        
+    # finalize by copying results to GCS
+    finalize(path_to_folder, tile_name)
 
 
 if __name__ == "__main__":
