@@ -148,7 +148,6 @@ def run_batch_scenario(split_path):
         print("Could not determine completion.",completion)
         print(f"Executing batch run... ")
         run_cmd(f"bp batch run -b {split_path}")
-    run_resubmit_unfinished_jobs(split_path)
 
 def wait_for_jobs():
     print("[WAIT] Waiting for jobs to finish...")
@@ -193,8 +192,8 @@ def process_remaining_scenarios(path_to_folder, tile_name, scenarios):
     for scenario in scenarios:
         split_path = f"{path_to_folder}/{tile_name}_sc/{scenario}_split"
         run_batch_scenario(split_path)
-        
         wait_for_jobs()
+        run_resubmit_unfinished_jobs(split_path)
         merge_and_plot(split_path)
 
 def finalize(path_to_folder, tile_name):
@@ -245,6 +244,7 @@ def main():
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
         run_batch_scenario(base_split_path)
         wait_for_jobs()
+        run_resubmit_unfinished_jobs(split_path)
         merge_and_plot(base_split_path)
 
         # scenario processing
@@ -267,6 +267,7 @@ def main():
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
         run_batch_scenario(base_split_path)
         wait_for_jobs()
+        run_resubmit_unfinished_jobs(split_path)
         merge_and_plot(base_split_path)
 
     else:
