@@ -244,7 +244,7 @@ def main():
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
         run_batch_scenario(base_split_path)
         wait_for_jobs()
-        run_resubmit_unfinished_jobs(split_path)
+        run_resubmit_unfinished_jobs(base_split_path)
         merge_and_plot(base_split_path)
 
         # scenario processing
@@ -267,7 +267,7 @@ def main():
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
         run_batch_scenario(base_split_path)
         wait_for_jobs()
-        run_resubmit_unfinished_jobs(split_path)
+        run_resubmit_unfinished_jobs(base_split_path)
         merge_and_plot(base_split_path)
 
     else:
