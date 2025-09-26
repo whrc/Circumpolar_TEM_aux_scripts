@@ -85,6 +85,7 @@ if __name__ == "__main__":
 
     if total_n > 0:
         completion = (total_m / total_n) * 100
+        print(total_m, total_n)
         print(f"\nOverall Completion: {completion:.2f}%")
         if count_n > 0:
             avg_runtime = total_time / count_n

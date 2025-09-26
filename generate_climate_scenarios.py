@@ -38,20 +38,20 @@ FILES_TO_COPY = [
 ]
 
 PROJECTED_CLIMATE_FILES = [
-    "projected-climate_ssp1_2_6_access_cm2.nc",
+    #"projected-climate_ssp1_2_6_access_cm2.nc",
     "projected-climate_ssp1_2_6_mri_esm2_0.nc",
-    "projected-climate_ssp2_4_5_access_cm2.nc",
-    "projected-climate_ssp2_4_5_mri_esm2_0.nc",
-    "projected-climate_ssp3_7_0_access_cm2.nc",
-    "projected-climate_ssp3_7_0_mri_esm2_0.nc",
-    "projected-climate_ssp5_8_5_access_cm2.nc",
+    #"projected-climate_ssp2_4_5_access_cm2.nc",
+    #"projected-climate_ssp2_4_5_mri_esm2_0.nc",
+    #"projected-climate_ssp3_7_0_access_cm2.nc",
+    #"projected-climate_ssp3_7_0_mri_esm2_0.nc",
+    #"projected-climate_ssp5_8_5_access_cm2.nc",
     "projected-climate_ssp5_8_5_mri_esm2_0.nc",
 ]
 
 PROJECTED_CO2_FILES = [
     "projected-co2_ssp1_2_6.nc",
-    "projected-co2_ssp2_4_5.nc",
-    "projected-co2_ssp3_7_0.nc",
+    #"projected-co2_ssp2_4_5.nc",
+    #"projected-co2_ssp3_7_0.nc",
     "projected-co2_ssp5_8_5.nc",
 ]
 

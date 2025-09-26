@@ -131,7 +131,7 @@ def check_run_completion(folder_path):
 
     return None
 
-def run_resubmit_unfinished_jobs(split_path):
+def resubmit_unfinished_jobs(split_path):
     """Run the resubmit_unfinished.py script to resubmit any unfinished jobs."""
     print(f"[RESUBMIT] Checking for unfinished jobs in {split_path}")
     resubmit_script = os.path.expanduser("~/Circumpolar_TEM_aux_scripts/resubmit_unfinished.py")
@@ -174,8 +174,10 @@ def split_rest_scenarios(path_to_folder, tile_name, base_scenario_name):
         d.name for d in scenario_dir.iterdir()
         if d.is_dir() and d.name.startswith("ssp") and d.name != base_scenario_name
     ]
+    #currently we go only for 3 scenarious
     scenarios_nosplit = [s for s in scenarios if "_split" not in s]
-    
+    scenarios_nosplit = ['ssp5_8_5_mri_esm2_0']
+
     for scenario in scenarios_nosplit:
         input_path = scenario_dir / scenario
         output_path = f"{input_path}_split"
@@ -193,7 +195,7 @@ def process_remaining_scenarios(path_to_folder, tile_name, scenarios):
         split_path = f"{path_to_folder}/{tile_name}_sc/{scenario}_split"
         run_batch_scenario(split_path)
         wait_for_jobs()
-        run_resubmit_unfinished_jobs(split_path)
+        resubmit_unfinished_jobs(split_path)
         merge_and_plot(split_path)
 
 def finalize(path_to_folder, tile_name):
@@ -221,7 +223,7 @@ def main():
     )
     parser.add_argument(
         "--base-scenario-name",
-        default="ssp1_2_6_access_cm2",
+        default="ssp1_2_6_mri_esm2_0",
         help="Base scenario folder name (default: ssp1_2_6_access_cm2)",
     )
     args = parser.parse_args()
@@ -244,7 +246,7 @@ def main():
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
         run_batch_scenario(base_split_path)
         wait_for_jobs()
-        run_resubmit_unfinished_jobs(base_split_path)
+        resubmit_unfinished_jobs(base_split_path)
         merge_and_plot(base_split_path)
 
         # scenario processing
@@ -267,7 +269,7 @@ def main():
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
         run_batch_scenario(base_split_path)
         wait_for_jobs()
-        run_resubmit_unfinished_jobs(base_split_path)
+        resubmit_unfinished_jobs(base_split_path)
         merge_and_plot(base_split_path)
 
     else:

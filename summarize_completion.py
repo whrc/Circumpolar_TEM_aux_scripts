@@ -3,12 +3,7 @@ import subprocess
 import os
 
 # List of tiles
-scs = [
-    'H10_V10', 'H10_V11', 'H10_V8', 'H10_V9',
-    'H11_V8', 'H11_V9',
-    'H1_V10', 'H1_V7', 'H1_V8', 'H1_V9',
-    'H2_V11', 'H2_V12', 'H2_V5', 'H2_V6', 'H2_V7', 'H2_V8', 'H2_V9',
-    'H3_V11', 'H3_V12', 'H3_V13', 'H3_V2', 'H3_V3', 'H3_V4', 'H3_V5', 'H3_V6', 'H3_V7', 'H3_V8'
+scs = ['H10_V15', 'H11_V14', 'H7_V16', 'H8_V14'
 ]
 
 log_dir = "LOG"
