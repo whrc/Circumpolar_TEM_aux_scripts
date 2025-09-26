@@ -196,19 +196,24 @@ def process_remaining_scenarios(path_to_folder, tile_name, scenarios):
         run_batch_scenario(split_path)
         wait_for_jobs()
         resubmit_unfinished_jobs(split_path)
+        wait_for_jobs()
         merge_and_plot(split_path)
 
 def finalize(path_to_folder, tile_name):
     """Copy the results to Google Cloud Storage once the run is finished."""
     print(f"[FINALIZE] Copying results to Google Cloud Storage for {tile_name}")
     source_path = f"{path_to_folder}/{tile_name}_sc"
-    destination_path = f"gs://circumpolar_model_output/recent/{tile_name}"
+    destination_path = f"gs://circumpolar_model_output/recent2/{tile_name}"
     
     if os.path.exists(source_path):
         run_cmd(f"gsutil -m cp -r {source_path} {destination_path}")
         print(f"[FINALIZE] Successfully copied {source_path} to {destination_path}")
+        #delete folder to keep exascaler clean
+        shutil.rmtree(source_path)
+        print(f"✅  Folder deleted: {source_path}")
     else:
         print(f"[ERROR] Source path {source_path} does not exist, skipping finalize step")
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -247,6 +252,7 @@ def main():
         run_batch_scenario(base_split_path)
         wait_for_jobs()
         resubmit_unfinished_jobs(base_split_path)
+        wait_for_jobs()
         merge_and_plot(base_split_path)
 
         # scenario processing
@@ -270,6 +276,7 @@ def main():
         run_batch_scenario(base_split_path)
         wait_for_jobs()
         resubmit_unfinished_jobs(base_split_path)
+        wait_for_jobs()
         merge_and_plot(base_split_path)
 
     else:
