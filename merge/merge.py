@@ -27,8 +27,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Merge TEM outputs across multiple tiles for a given scenario')
     parser.add_argument('base_path', help='Base path containing tile directories (e.g., /mnt/exacloud/dteber_woodwellclimate_org/Alaska)')
     parser.add_argument('scenario', help='Scenario name to process (e.g., ssp1_2_6_mri_esm2_0)')
-    parser.add_argument('--temdir', default='/home/dteber_woodwellclimate_org/dvm-dos-tem', 
-                       help='Path to dvm-dos-tem directory (default: /home/dteber_woodwellclimate_org/dvm-dos-tem)')
+    parser.add_argument('--temdir', default='/opt/dvm-dos-tem', 
+                       help='Path to dvm-dos-tem directory (default: /opt/dvm-dos-tem)')
     parser.add_argument('--no-yearsynth', action='store_false', dest='yearsynth',
                        help='Disable yearly synthesis of monthly outputs')
     parser.add_argument('--no-compsynth', action='store_false', dest='compsynth',
