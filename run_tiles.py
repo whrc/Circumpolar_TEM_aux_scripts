@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import subprocess
-import subprocess
 import os
+import argparse
 
 #before running script make sure that folder structure 
 # Region (e.g. Alaska):
@@ -11,11 +11,27 @@ import os
 #in the future tile#ids_sc will moved to the correspoding case folder
 #e.g. olt_const, olt_nonconst,olt_nonconst_fire, ... 
 
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Run automation script for multiple tiles')
+parser.add_argument('tiles_file', help='Path to the text file containing tiles (one per line)')
+args = parser.parse_args()
 
-scs = ['H10_V15', 'H11_V14', 'H7_V16', 'H8_V14']
+tiles_file = args.tiles_file
+try:
+    with open(tiles_file, 'r') as f:
+        scs = [line.strip() for line in f.readlines() if line.strip()]
+except FileNotFoundError:
+    print(f"Error: {tiles_file} not found. Please create a file with tiles separated by new lines.")
+    exit(1)
+except Exception as e:
+    print(f"Error reading {tiles_file}: {e}")
+    exit(1)
+
+if not scs:
+    print(f"Error: No tiles found in {tiles_file}")
+    exit(1)
 log_dir = "LOG"
 
-# Create the LOG directory if it doesn't exist
 os.makedirs(log_dir, exist_ok=True)
 
 for tile in scs:
