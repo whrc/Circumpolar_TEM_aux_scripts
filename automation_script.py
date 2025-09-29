@@ -45,15 +45,15 @@ def conform_runmask(tile_name):
     
     # Set up environment with PYTHONPATH
     env = os.environ.copy()
-    dvm_scripts_path = "/opt/dvm-dos-tem/scripts"
+    dvm_scripts_path = "/opt/apps/dvm-dos-tem/scripts"
     if "PYTHONPATH" in env:
         env["PYTHONPATH"] = f"{dvm_scripts_path}:{env['PYTHONPATH']}"
     else:
         env["PYTHONPATH"] = dvm_scripts_path
     
     # Parameters directory
-    params_dir = "/opt/dvm-dos-tem/parameters/"
-    runmask_script = "/opt/dvm-dos-tem/scripts/util/runmask.py"
+    params_dir = "/opt/apps/dvm-dos-tem/parameters/"
+    runmask_script = "/opt/apps/dvm-dos-tem/scripts/util/runmask.py"
     
     # Find all scenario directories
     scenario_base_dir = f"{tile_name}_sc"
