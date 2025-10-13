@@ -199,6 +199,25 @@ def process_remaining_scenarios(path_to_folder, tile_name, scenarios):
         wait_for_jobs()
         merge_and_plot(split_path)
 
+def print_completion_status(path_to_folder, tile_name):
+    """Print completion status for all scenarios using check_run_completion."""
+    print(f"[STATUS] Checking completion status for {tile_name}")
+    scenario_base_dir = f"{path_to_folder}/{tile_name}_sc"
+    
+    if not os.path.exists(scenario_base_dir):
+        print(f"[WARNING] Scenario directory {scenario_base_dir} not found")
+        return
+    
+    # Check all split scenarios
+    for item in os.listdir(scenario_base_dir):
+        item_path = os.path.join(scenario_base_dir, item)
+        if os.path.isdir(item_path) and item.endswith("_split"):
+            completion = check_run_completion(item_path)
+            if completion is not None:
+                print(f"[STATUS] {item}: {completion:.2f}% complete")
+            else:
+                print(f"[STATUS] {item}: Unable to determine completion status")
+
 def finalize(path_to_folder, tile_name):
     """Copy the results to Google Cloud Storage once the run is finished."""
     print(f"[FINALIZE] Copying results to Google Cloud Storage for {tile_name}")
@@ -289,6 +308,9 @@ def main():
         modify_new_scenarios(path_to_folder, tile_name, base_scenario_name, scenarios)
         process_remaining_scenarios(path_to_folder, tile_name, scenarios)
         
+    # print completion status before finalizing
+    print_completion_status(path_to_folder, tile_name)
+    
     # finalize by copying results to GCS
     finalize(path_to_folder, tile_name)
 
