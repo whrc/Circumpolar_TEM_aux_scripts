@@ -128,7 +128,7 @@ def main():
     
     # Configuration
     region = "Alaska"
-    scenario_name = "ssp1_2_6_mri_esm2_0"
+    scenario_name = "ssp5_8_5_mri_esm2_0"#"ssp1_2_6_mri_esm2_0"
     tile_list = ['H10_V15', 'H10_V14', 'H9_V19', 'H9_V18', 'H9_V17', 'H9_V16', 'H9_V15', 'H9_V14',
                 'H14_V20', 'H13_V20', 'H12_V20', 'H11_V20', 'H11_V19', 'H11_V18', 'H11_V17', 'H11_V16', 'H11_V15',  
                 'H11_V14', 'H10_V19', 'H10_V18', 'H10_V17', 'H10_V16',

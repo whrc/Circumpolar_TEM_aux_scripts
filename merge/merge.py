@@ -3,7 +3,6 @@
 # even when tiles are not adjacent. This script also summarize 
 # the outputs when specified by user.
 
-
 import os
 import xarray as xr
 import pandas as pd
@@ -11,6 +10,7 @@ import pandas as pd
 import numpy as np
 import glob
 import argparse
+import sys
 
 #Usage example: python merge.py Alaska ssp1_2_6_mri_esm2_0 --temdir path_to_outspec_file
 # List of emission scenarios
@@ -98,7 +98,6 @@ print(f"Found {len(tilelist)} tiles for scenario '{scenario}':")
 for tile in tilelist:
     print(f"  - {tile}")
 print(f"Found {len(varlist)} variables: {varlist}")
-
 
 #### CREATE CANVAS ####
 
