@@ -27,6 +27,56 @@ def pull_tile(tile_name):
     os.makedirs(input_tiles_dir, exist_ok=True)
     run_cmd(f"gsutil -m cp -r gs://regionalinputs/CIRCUMPOLAR/{tile_name} {input_tiles_dir}/.")
 
+def pull_exisitng_tile_output_from_bucket(bucket_path, tile_name):
+    """
+    Pulls exisitng tile from the bucket (we do this for check or fresh resubmit of failed batches)
+    If bucket or tile folder is not found, error is handled.
+    """
+    os.makedirs(tile_name, exist_ok=True)
+
+    try:
+        print(f"Pulling gs://{bucket_path}/{tile_name} ...")
+        run_cmd(f"gsutil -m cp -r gs://{bucket_path}/{tile_name} {tile_name}_sc")
+        print("Download completed successfully.")
+    except Exception as e:
+        if "No URLs matched" in str(e) or "BucketNotFoundException" in str(e):
+            print(f"Bucket or path gs://{bucket_path}/{tile_name} not found.")
+        else:
+            print(f"An unexpected error occurred while accessing the bucket.")
+        print(f"Details: {e}")
+
+
+def sync_scenario_to_bucket(bucket_name, tile_name, scenario):
+    """
+    Checks if gs://bucket_name/tile_name/scenario exists.
+    If it does, deletes it, then uploads local tile_name/scenario to the same location.
+    """
+    gcs_path = f"gs://{bucket_name}/{tile_name}/{scenario}"
+    local_path = f"{tile_name}_sc/{scenario}"
+
+    # Step 1: Check if the scenario exists in the bucket
+    check_cmd = f"gsutil ls {gcs_path}"
+    try:
+        subprocess.run(check_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print(f"[SYNC] Found existing scenario at {gcs_path}, deleting it...")
+        
+        # Step 2: If found, delete the existing folder
+        delete_cmd = f"gsutil -m rm -r {gcs_path}"
+        print('[SYNC] Deleting: ', delete_cmd)
+        subprocess.run(delete_cmd, shell=True, check=True)
+    except subprocess.CalledProcessError:
+        print(f"[SYNC] Scenario not found in bucket: {gcs_path} — skipping deletion.")
+
+    # Step 3: Upload the local scenario
+    print(f"[SYNC] Uploading {local_path} to {gcs_path} ...")
+    upload_cmd = f"gsutil -m cp -r {local_path} {gcs_path}"
+    print('[SYNC] Copying: ', upload_cmd)
+    try:
+        subprocess.run(upload_cmd, shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌[SYNC] Upload failed: {e}")
+
+
 def remove_tile(tile_name):
     """Remove the downloaded tile to save space after processing."""
     input_tiles_dir = "input_tiles"
@@ -110,31 +160,48 @@ def split_base_scenario(path_to_folder, tile_name, base_scenario_name):
     run_cmd(f"bp batch split -i {input_path} -b {output_path} --p 100 --e 2000 --s 200 --t 124 --n 76")
     return output_path
 
+
 def check_run_completion(folder_path):
     try:
-        # Run the check_runs.py script and capture output
+        # Expand the home directory path properly
+        script_path = os.path.expanduser("~/Circumpolar_TEM_aux_scripts/check_tile_run_completion.py")
+
+        # Run the check_tile_run_completion.py script and capture output
         result = subprocess.run(
-            ["python", "~/Circumpolar_TEM_aux_scripts/check_tile_run_completion.py", folder_path],
+            ["python", script_path, folder_path],
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,  # Changed from DEVNULL to see errors
             text=True,
             check=True
         )
+        print(f"[C CHECK] Script output: {result.stdout}")
 
         # Search for "Overall Completion: XX.XX%"
         match = re.search(r"Overall Completion:\s+(\d+(?:\.\d+)?)%", result.stdout)
         if match:
             completion = float(match.group(1))
             return completion
-    except subprocess.CalledProcessError:
-        pass
+        else:
+            print(f"[C DEBUG] No completion match found in output")
+
+    except subprocess.CalledProcessError as e:
+        print(f"[C ERROR] Script failed for {folder_path}: {e.stderr}")
+    except Exception as e:
+        print(f"[C ERROR] Unexpected error for {folder_path}: {e}")
 
     return None
+
 
 def resubmit_unfinished_jobs(split_path):
     """Run the resubmit_unfinished.py script to resubmit any unfinished jobs."""
     print(f"[RESUBMIT] Checking for unfinished jobs in {split_path}")
     resubmit_script = os.path.expanduser("~/Circumpolar_TEM_aux_scripts/resubmit_unfinished.py")
+    run_cmd(f"python {resubmit_script} {split_path}")
+
+def resubmit_unfinished_jobs_fresh(split_path):
+    """Run the resubmit_unfinished.py script to resubmit any unfinished jobs."""
+    print(f"[RESUBMIT FRESH] Checking for unfinished jobs in {split_path}")
+    resubmit_script = os.path.expanduser("~/Circumpolar_TEM_aux_scripts/resubmit_unfinished_fresh.py")
     run_cmd(f"python {resubmit_script} {split_path}")
 
 def run_batch_scenario(split_path):
@@ -195,7 +262,7 @@ def process_remaining_scenarios(path_to_folder, tile_name, scenarios):
         split_path = f"{path_to_folder}/{tile_name}_sc/{scenario}_split"
         run_batch_scenario(split_path)
         wait_for_jobs()
-        resubmit_unfinished_jobs(split_path)
+        resubmit_unfinished_jobs_fresh(split_path)
         wait_for_jobs()
         merge_and_plot(split_path)
 
@@ -238,7 +305,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="Run automation for a tile. Use --mode sc (default) or --mode full."
     )
-    parser.add_argument("tile_name", help="Tile name, e.g., H10_V16")
+    #parser.add_argument("tile_name", help="Tile name, e.g., H10_V16")
+    parser.add_argument("tile_name",  help="Tile name, e.g., H10_V16 (optional when using -bucket)")
     parser.add_argument(
         "--mode",
         choices=["sc", "full", "base"],
@@ -250,12 +318,24 @@ def main():
         default="ssp1_2_6_mri_esm2_0",
         help="Base scenario folder name (default: ssp1_2_6_access_cm2)",
     )
+    parser.add_argument(
+        "-bucket",
+        "--bucket-path",
+        help="Google Cloud Storage path to a file containing tile IDs (e.g., gs://bucket/tiles.txt). When specified, processes multiple tiles in sc mode.",
+    )
     args = parser.parse_args()
 
     tile_name = args.tile_name
     base_scenario_name = args.base_scenario_name
     path_to_folder = os.getcwd()
 
+
+    # For non-bucket modes, tile_name is required
+    if not args.tile_name:
+        print("[ERROR] tile_name is required when not using -bucket option")
+        parser.print_help()
+        sys.exit(1)
+    
     if args.mode == "full":
         print("[MODE] full — running end-to-end pipeline")
 
@@ -299,20 +379,52 @@ def main():
         merge_and_plot(base_split_path)
 
     else:
-        print("[MODE] sc — running scenario-only steps")
+        if args.bucket_path:
+            if args.mode != "sc":
+                print("[ERROR] -bucket option only works with --mode sc")
+                sys.exit(1)
 
-        # use path_to_folder for base_split_path as requested
-        base_split_path = f"{path_to_folder}/{tile_name}_sc/{base_scenario_name}"
-        scenarios = split_rest_scenarios(path_to_folder, tile_name, base_scenario_name)
-        print(scenarios)
-        modify_new_scenarios(path_to_folder, tile_name, base_scenario_name, scenarios)
-        process_remaining_scenarios(path_to_folder, tile_name, scenarios)
+            print("[MODE] sc-bucket — processing multiple tiles from bucket")
+            #ex: python ~/Circumpolar_TEM_aux_scripts/automation_script.py H8_V16 --mode sc -bucket circumpolar_model_output/recent2
+            pull_exisitng_tile_output_from_bucket(args.bucket_path,tile_name)
+
+            path_to_tile = os.path.join(path_to_folder, tile_name + '_sc')
+
+            # Find all folders with '_split' in the name
+            scenario_list = [
+                name for name in os.listdir(path_to_tile)
+                if os.path.isdir(os.path.join(path_to_tile, name)) and "_split" in name
+            ]
+            # Remove the base scenario name if it's in the list
+            base_scenario_name += "_split"
+            if base_scenario_name in scenario_list:
+                scenario_list.remove(base_scenario_name)
+            print("Scenarios to resubmit:", scenario_list)
+
+            # Loop through each and resubmit
+            for scenario_i in scenario_list:
+                full_scenario_path = os.path.join(path_to_tile, scenario_i)
+                print(full_scenario_path)
+                resubmit_unfinished_jobs_fresh(full_scenario_path)
+                wait_for_jobs()
+                merge_and_plot(full_scenario_path)
+                sync_scenario_to_bucket(args.bucket_path,tile_name,scenario_i)
+        else:
+            print("[MODE] sc — running scenario-only steps")
+
+            # use path_to_folder for base_split_path as requested
+            base_split_path = f"{path_to_folder}/{tile_name}_sc/{base_scenario_name}"
+            scenarios = split_rest_scenarios(path_to_folder, tile_name, base_scenario_name)
+            print("Scenarios to submit:", scenarios)
+            modify_new_scenarios(path_to_folder, tile_name, base_scenario_name, scenarios)
+            process_remaining_scenarios(path_to_folder, tile_name, scenarios)
         
     # print completion status before finalizing
     print_completion_status(path_to_folder, tile_name)
     
     # finalize by copying results to GCS
-    finalize(path_to_folder, tile_name)
+    if not args.bucket_path:
+        finalize(path_to_folder, tile_name)
 
 
 if __name__ == "__main__":
