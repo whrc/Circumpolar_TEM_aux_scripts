@@ -8,7 +8,7 @@ It downloads both the merged model outputs and the run-mask files for each tile.
 Usage:
     python download_tiles.py -tile_file tile.txt -sc ssp5_8_5_mri_esm2_0
     python download_tiles.py --tile_file tiles/test_tile.txt --scenario ssp1_2_6_mri_esm2_0
-
+    python download_tiles_v1.py -tile_file ../tiles/canada_tiles.txt -sc ssp5_8_5_mri_esm2_0 -region /tmp/Alaska 
 Arguments:
     -tile_file, --tile_file: Path to file containing tile IDs (one per line)
     -sc, --scenario: Climate scenario name (e.g., ssp5_8_5_mri_esm2_0, ssp1_2_6_mri_esm2_0)
