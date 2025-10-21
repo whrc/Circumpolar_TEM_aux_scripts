@@ -29,6 +29,8 @@ def parse_arguments():
     parser.add_argument('scenario', help='Scenario name to process (e.g., ssp1_2_6_mri_esm2_0)')
     parser.add_argument('--temdir', default='/opt/apps/dvm-dos-tem', 
                        help='Path to dvm-dos-tem directory (default: /opt/apps/dvm-dos-tem)')
+    parser.add_argument('--run-stage', default='sc', choices=['eq', 'sp', 'tr', 'sc'],
+                       help='Run stage to process: eq=equilibrium, sp=spinup, tr=transient, sc=scenario (default: sc)')
     parser.add_argument('--no-yearsynth', action='store_false', dest='yearsynth',
                        help='Disable yearly synthesis of monthly outputs')
     parser.add_argument('--no-compsynth', action='store_false', dest='compsynth',
@@ -48,6 +50,8 @@ args = parse_arguments()
 base_path = args.base_path
 ## Scenario to process
 scenario = args.scenario
+## Run stage to process
+run_stage = args.run_stage
 ## Path to the merging/synthesis directory
 synthdir = os.path.join(base_path, 'merged')
 ## Path to dvm-dos-tem directory
@@ -88,13 +92,15 @@ if os.path.exists(scenario_path):
                     if (os.path.isfile(os.path.join(all_merged_path, outf))) & (outf.endswith('.nc')) & (not outf.startswith('.')):
                         # Skip restart files and run_status
                         if outf not in ['restart-sc.nc', 'restart-tr.nc', 'restart-eq.nc', 'restart-sp.nc', 'restart-pr.nc', 'run_status.nc']:
-                            outflist.append(outf)
+                            # Only include files matching the specified run stage
+                            if f'_{run_stage}.nc' in outf:
+                                outflist.append(outf)
 
 # Process the lists
 outflist = list(set(outflist))
 varlist = list(set([item.split('_')[0] for item in outflist]))
 
-print(f"Found {len(tilelist)} tiles for scenario '{scenario}':")
+print(f"Found {len(tilelist)} tiles for scenario '{scenario}' with run stage '{run_stage}':")
 for tile in tilelist:
     print(f"  - {tile}")
 print(f"Found {len(varlist)} variables: {varlist}")
@@ -177,10 +183,10 @@ for var in varlist:
         # Construct path to the all_merged directory for this tile and scenario
         all_merged_dir = os.path.join(base_path, scenario, tile, 'all_merged')
 
-        # Find the variable file
-        var_files = glob.glob(os.path.join(all_merged_dir, var + '*.nc'))
+        # Find the variable file for the specified run stage
+        var_files = glob.glob(os.path.join(all_merged_dir, f'{var}_*_{run_stage}.nc'))
         if not var_files:
-            print(f'    Warning: No file found for variable {var} in tile {tile}')
+            print(f'    Warning: No file found for variable {var} with run stage {run_stage} in tile {tile}')
             continue
             
         var_file = var_files[0]  # Take the first match
@@ -207,34 +213,72 @@ for var in varlist:
             if ovl is not None and var in ovl['Name'].values:
                 var_spec = ovl[ovl['Name'] == var].iloc[0]
                 
+                # Determine aggregation operation based on units
+                # Flux variables (with /time) should be summed
+                # State variables (without /time) should be averaged
+                units = var_spec.get('Units', '')
+                if '/time' in str(units):
+                    default_op = 'sum'  # Flux variables
+                else:
+                    default_op = 'mean'  # State variables
+                
                 # Monthly to yearly synthesis
                 if (tempres == 'monthly') & (yearsynth == True):
-                    if var_spec['Yearsynth'] != 'invalid':
+                    # Check if both monthly and yearly are available in spec
+                    if (str(var_spec.get('Monthly', '')).lower() == 'm' and 
+                        str(var_spec.get('Yearly', '')).lower() == 'y'):
                         tempres = 'yearly'
-                        op = var_spec['Yearsynth']
-                        codstg = f"out = out['{var}'].resample(time='Y').{op}(skipna=False).to_dataset()"
-                        exec(codstg)
+                        op = default_op
+                        
+                        # Custom aggregation that preserves NaN when all monthly values are NaN
+                        if op == 'sum':
+                            # For sum: use min_count=1 to require at least 1 non-NaN value
+                            # Otherwise returns NaN (prevents filling empty areas with 0)
+                            yearly_data = out[var].resample(time='Y').sum(skipna=True, min_count=1)
+                        elif op == 'mean':
+                            # For mean: skipna=True is fine, it returns NaN if all are NaN
+                            yearly_data = out[var].resample(time='Y').mean(skipna=True)
+                        else:
+                            # Fallback for other operations
+                            codstg = f"yearly_data = out['{var}'].resample(time='Y').{op}(skipna=True)"
+                            exec(codstg)
+                        
+                        out = yearly_data.to_dataset()
+                        print(f'    Converted monthly to yearly using {op}() with proper NaN handling')
+                        
+                        # Update units to reflect yearly aggregation
+                        if 'units' in out[var].attrs:
+                            original_units = out[var].attrs['units']
+                            # Replace /month with /year for flux variables
+                            if '/month' in original_units:
+                                out[var].attrs['units'] = original_units.replace('/month', '/year')
+                            # For other time-based units, update appropriately
+                            elif '/time' in original_units and op == 'sum':
+                                out[var].attrs['units'] = original_units.replace('/time', '/year')
                         
                 # Compartment synthesis
                 if ('pftpart' in list(out[var].dims)) & (compsynth == True):
-                    if var_spec['Yearsynth'] != 'invalid':
-                        op = var_spec['Yearsynth']
-                        codstg = f"out = out.{op}(dim = 'pftpart', skipna=False)"
+                    if str(var_spec.get('Compartments', '')).lower() not in ['invalid', '']:
+                        op = 'sum'  # Sum across compartments
+                        codstg = f"out = out.{op}(dim = 'pftpart', skipna=True)"
                         exec(codstg)
+                        print(f'    Synthesized across compartments using {op}()')
                         
                 # PFT synthesis
                 if ('pft' in list(out[var].dims)) & (pftsynth == True):
-                    if 'Pftsynth' in var_spec and var_spec['Pftsynth'] != 'invalid':
-                        op = var_spec['Pftsynth']
-                        codstg = f"out = out.{op}(dim = 'pft', skipna=False)"
+                    if str(var_spec.get('PFT', '')).lower() not in ['invalid', '']:
+                        op = 'sum'  # Sum across PFTs
+                        codstg = f"out = out.{op}(dim = 'pft', skipna=True)"
                         exec(codstg)
+                        print(f'    Synthesized across PFTs using {op}()')
                         
                 # Layer synthesis
                 if ('layer' in list(out[var].dims)) & (layersynth == True):
-                    if var_spec['Yearsynth'] != 'invalid':
-                        op = var_spec['Yearsynth']
-                        codstg = f"out = out.{op}(dim = 'layer', skipna=False)"
+                    if str(var_spec.get('Layers', '')).lower() not in ['invalid', '']:
+                        op = 'sum'  # Sum across layers
+                        codstg = f"out = out.{op}(dim = 'layer', skipna=True)"
                         exec(codstg)
+                        print(f'    Synthesized across layers using {op}()')
             
             # Handle coordinate naming conventions and add coordinate values
             x_coord = 'X' if 'X' in msk.coords else 'x'
@@ -307,7 +351,7 @@ for var in varlist:
         canevas['y'].attrs = crop_mask[y_coord].attrs
                
         # Create output filename
-        output_filename = f"{var}_{scenario}_{tempres}.nc"
+        output_filename = f"{var}_{scenario}_{run_stage}_{tempres}.nc"
         output_path = os.path.join(synthdir, output_filename)
         
         print(f'  Saving merged output: {output_filename}')
