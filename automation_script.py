@@ -32,11 +32,11 @@ def pull_exisitng_tile_output_from_bucket(bucket_path, tile_name):
     Pulls exisitng tile from the bucket (we do this for check or fresh resubmit of failed batches)
     If bucket or tile folder is not found, error is handled.
     """
-    os.makedirs(tile_name, exist_ok=True)
+    os.makedirs(tile_name+'_sc', exist_ok=True)
 
     try:
         print(f"Pulling gs://{bucket_path}/{tile_name} ...")
-        run_cmd(f"gsutil -m cp -r gs://{bucket_path}/{tile_name} {tile_name}_sc")
+        run_cmd(f"gsutil -m cp -r gs://{bucket_path}/{tile_name}/* {tile_name}_sc/")
         print("Download completed successfully.")
     except Exception as e:
         if "No URLs matched" in str(e) or "BucketNotFoundException" in str(e):

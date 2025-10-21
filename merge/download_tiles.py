@@ -6,10 +6,16 @@ This script creates the necessary directory structure and downloads tiles that d
 It downloads both the merged model outputs and the run-mask files for each tile.
 
 Usage:
-    python download_tiles.py
+    python download_tiles.py -tile_file tile.txt -sc ssp5_8_5_mri_esm2_0
+    python download_tiles.py --tile_file tiles/test_tile.txt --scenario ssp1_2_6_mri_esm2_0
+
+Arguments:
+    -tile_file, --tile_file: Path to file containing tile IDs (one per line)
+    -sc, --scenario: Climate scenario name (e.g., ssp5_8_5_mri_esm2_0, ssp1_2_6_mri_esm2_0)
 
 """
 
+import argparse
 import os
 import subprocess
 import sys
@@ -91,12 +97,6 @@ def download_tile(region, scenario_name, tile_id, scenario_dir):
         tile_dir.mkdir(parents=True)
     
     # Download all_merged directory
-    #odl_tile_list = ["H5_V15", "H5_V16","H6_V15", "H6_V16","H7_V15", "H7_V16",
-    #                "H8_V14", "H9_V14", "H11_V15" ]
-    #if tile_id in old_tile_list:
-    #    all_merged_source = f"gs://circumpolar_model_output/{region}/olt_nonconst/{tile_id}_sc_split/{scenario_name}_split/all_merged"
-    #else:
-    #    all_merged_source = f"gs://circumpolar_model_output/{region}-v1/merged_tiles/{scenario_name}/{tile_id}/all_merged"
  
     all_merged_source = f"gs://circumpolar_model_output/recent2/{tile_id}/{scenario_name}_split/all_merged"
 
@@ -123,28 +123,90 @@ def download_tile(region, scenario_name, tile_id, scenario_dir):
     print(f"Successfully downloaded tile {tile_id}")
     return True
 
+def read_tile_file(tile_file_path):
+    """
+    Read tile IDs from a text file.
+    
+    Args:
+        tile_file_path (str): Path to the file containing tile IDs
+        
+    Returns:
+        list: List of tile IDs (stripped of whitespace)
+    """
+    tile_file = Path(tile_file_path)
+    
+    if not tile_file.exists():
+        print(f"Error: Tile file not found: {tile_file_path}")
+        sys.exit(1)
+    
+    with open(tile_file, 'r') as f:
+        tiles = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
+    
+    if not tiles:
+        print(f"Error: No tiles found in file: {tile_file_path}")
+        sys.exit(1)
+    
+    return tiles
+
+def parse_arguments():
+    """
+    Parse command-line arguments.
+    
+    Returns:
+        argparse.Namespace: Parsed arguments
+    """
+    parser = argparse.ArgumentParser(
+        description='Download TEM model output tiles from Google Cloud Storage',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python download_tiles.py -tile_file tile.txt -sc ssp5_8_5_mri_esm2_0
+  python download_tiles.py --tile_file tiles/test_tile.txt --scenario ssp1_2_6_mri_esm2_0
+        """
+    )
+    
+    parser.add_argument(
+        '-tile_file', '--tile_file',
+        type=str,
+        required=True,
+        help='Path to file containing tile IDs (one per line)'
+    )
+    
+    parser.add_argument(
+        '-sc', '--scenario',
+        type=str,
+        required=True,
+        help='Climate scenario name (e.g., ssp5_8_5_mri_esm2_0, ssp1_2_6_mri_esm2_0)'
+    )
+    
+    parser.add_argument(
+        '-region', '--region',
+        type=str,
+        default='Alaska',
+        help='Region name (default: Alaska)'
+    )
+    
+    return parser.parse_args()
+
 def main():
     """Main function to orchestrate the tile download process."""
     
+    # Parse command-line arguments
+    args = parse_arguments()
+    
+    # Read tiles from file
+    tile_list = read_tile_file(args.tile_file)
+    
     # Configuration
-    region = "Alaska"
-    scenario_name = "ssp5_8_5_mri_esm2_0"#"ssp1_2_6_mri_esm2_0"
-    tile_list = ['H10_V15', 'H10_V14', 'H9_V19', 'H9_V18', 'H9_V17', 'H9_V16', 'H9_V15', 'H9_V14',
-                'H14_V20', 'H13_V20', 'H12_V20', 'H11_V20', 'H11_V19', 'H11_V18', 'H11_V17', 'H11_V16', 'H11_V15',  
-                'H11_V14', 'H10_V19', 'H10_V18', 'H10_V17', 'H10_V16',
-                'H8_V18', 'H8_V17', 'H8_V16', 'H8_V15']
-#    tile_list = ['H10_V14', 'H10_V15', 'H10_V16','H10_V17','H10_V18','H10_V19',
-#                'H11_V14', 'H11_V15', 'H11_V16','H11_V17','H11_V18',
-#                "H8_V14", "H8_V15", "H8_V16", "H8_V17", "H8_V18",
-#                "H5_V15", "H9_V14","H5_V16", "H9_V15","H6_V15", "H9_V16",
-#                "H6_V16", "H9_V17","H7_V15", "H9_V18","H7_V16", "H9_V19",
-#                "H5_V15", "H5_V16","H6_V15", "H6_V16","H7_V15", "H7_V16",
-#                "H8_V14", "H9_V14", "H11_V15" ]
+    region = args.region
+    scenario_name = args.scenario
 
     print(f"Starting tile download process...")
+    print(f"Tile file: {args.tile_file}")
     print(f"Region: {region}")
     print(f"Scenario: {scenario_name}")
-    print(f"Tiles to process: {tile_list}")
+    print(f"Number of tiles to process: {len(tile_list)}")
+    print(f"Tiles: {tile_list}")
     print("-" * 50)
     
     # Create directory structure
@@ -172,5 +234,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
