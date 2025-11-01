@@ -348,6 +348,13 @@ Examples:
                     all_runs.append(run_info)
                     incomplete_runs.append(run_info)
         
+            # Clean up tile folder after processing all scenarios for this tile
+            tile_folder = os.path.join(temp_dir, tile_name)
+            if os.path.exists(tile_folder):
+                print(f"\nCleaning up tile folder: {tile_folder}")
+                shutil.rmtree(tile_folder, ignore_errors=True)
+
+
         # Summary report
         write_both("\n" + "="*80)
         write_both("SUMMARY - INCOMPLETE RUNS")

@@ -226,6 +226,17 @@ def wait_for_jobs():
         print("[INFO] Still running... will check again in 5 minutes.")
         time.sleep(300)
 
+def trim_sc_files(sc_path):
+
+    try:
+        print(f"Triming files in :{sc_path} ...")
+        run_cmd(f"python  ~/Circumpolar_TEM_aux_scripts/trim_batch_files.py {sc_path}")
+        print("Triming completed successfully.")
+    except Exception as e:
+        print(f"An unexpected error occurred while trimming.")
+        print(f"Details: {e}")
+
+
 def merge_and_plot(split_path):
     plot_file = Path(f"{split_path}/all_merged/summary_plots.pdf")
     #plot_file = f"{split_path}/all_merged/summary_plots.pdf"
@@ -264,6 +275,7 @@ def process_remaining_scenarios(path_to_folder, tile_name, scenarios):
         wait_for_jobs()
         resubmit_unfinished_jobs_fresh(split_path)
         wait_for_jobs()
+        trim_sc_files(split_path)
         merge_and_plot(split_path)
 
 def print_completion_status(path_to_folder, tile_name):
@@ -407,6 +419,7 @@ def main():
                 print(full_scenario_path)
                 resubmit_unfinished_jobs_fresh(full_scenario_path)
                 wait_for_jobs()
+                trim_sc_files(full_scenario_path)
                 merge_and_plot(full_scenario_path)
                 sync_scenario_to_bucket(args.bucket_path,tile_name,scenario_i)
         else:
