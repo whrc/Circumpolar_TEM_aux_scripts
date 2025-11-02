@@ -86,6 +86,42 @@ Alaska/
 
 ## Example Workflow
 
+### Complete Step-by-Step Instructions for Merging Tiles
+
+Follow these steps to download, verify, merge, and visualize tiles:
+
+```bash
+# Step 1: Navigate to the merge directory
+cd merge
+
+# Step 2: Download tiles for the specified region and scenario
+# Use -tile_file to specify which tiles to download
+# Use -sc to specify the scenario
+# Use --region to specify the region
+python download_tiles.py -tile_file ../tiles/ak_can_tiles.txt -sc ssp5_8_5_mri_esm2_0 --region Alaska
+
+# Step 3: Verify downloaded tiles (count files per tile)
+# This checks if all expected files are present for each tile
+python ../count_files_per_tile.py Alaska/ssp5_8_5_mri_esm2_0/
+
+# Note: If some tiles already exist locally, the download script will check
+# and download only the missing tiles automatically
+
+# Step 4: Merge the downloaded tiles
+# Specify the full path to the region directory
+# Specify the scenario name
+# Use --temdir to point to the directory containing output_spec.csv
+# Use --run-stage to specify the run stage (e.g., 'sc' for scenario)
+# Redirect output and errors to a log file
+python merge.py ~/Circumpolar_TEM_aux_scripts/merge/Alaska/ ssp5_8_5_mri_esm2_0 --temdir ~/Circumpolar_TEM_aux_scripts/merge/ --run-stage sc > report_ak_can_tiles_0111_1.log 2>&1
+
+# Step 5: Plot all merged output files
+# This visualizes the merged NetCDF files
+python ../plot_nc_all_files.py Alaska/merged/
+```
+
+### Quick Reference Example
+
 ```bash
 # 1. Configure and download tiles
 python download_tiles.py
