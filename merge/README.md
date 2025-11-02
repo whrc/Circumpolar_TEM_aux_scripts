@@ -117,20 +117,7 @@ python merge.py ~/Circumpolar_TEM_aux_scripts/merge/Alaska/ ssp5_8_5_mri_esm2_0 
 
 # Step 5: Plot all merged output files
 # This visualizes the merged NetCDF files
-python ../plot_nc_all_files.py Alaska/merged/
-```
-
-### Quick Reference Example
-
-```bash
-# 1. Configure and download tiles
-python download_tiles.py
-
-# 2. Merge the downloaded tiles
-python merge.py Alaska ssp1_2_6_mri_esm2_0 --temdir /path/to/dvm-dos-tem
-
-# 3. Plot the merged output
-cd ../ && python plot_nc_all_files.py merge/Alaska/merged
+python ../visualization/plot_nc_all_files.py Alaska/merged/
 ```
 
 ## Troubleshooting
