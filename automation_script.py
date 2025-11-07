@@ -157,7 +157,7 @@ def generate_scenarios(tile_name):
 def split_base_scenario(path_to_folder, tile_name, base_scenario_name):
     input_path = f"{path_to_folder}/{tile_name}_sc/{base_scenario_name}"
     output_path = f"{input_path}_split"
-    run_cmd(f"bp batch split -i {input_path} -b {output_path} --p 100 --e 2000 --s 200 --t 124 --n 76")
+    run_cmd(f"bp batch split -i {input_path} -b {output_path} --p 100 --e 2000 --s 200 --t 124 --n 76 --job-name-prefix {tile_name} -sp dask")
     return output_path
 
 
@@ -192,17 +192,19 @@ def check_run_completion(folder_path):
     return None
 
 
-def resubmit_unfinished_jobs(split_path):
+def resubmit_unfinished_jobs(split_path, job_name_prefix=None):
     """Run the resubmit_unfinished.py script to resubmit any unfinished jobs."""
     print(f"[RESUBMIT] Checking for unfinished jobs in {split_path}")
     resubmit_script = os.path.expanduser("~/Circumpolar_TEM_aux_scripts/resubmit_unfinished.py")
-    run_cmd(f"python {resubmit_script} {split_path}")
+    prefix_arg = f"--job-name-prefix {job_name_prefix}" if job_name_prefix else ""
+    run_cmd(f"python {resubmit_script} {split_path} {prefix_arg}")
 
-def resubmit_unfinished_jobs_fresh(split_path):
+def resubmit_unfinished_jobs_fresh(split_path, job_name_prefix=None):
     """Run the resubmit_unfinished.py script to resubmit any unfinished jobs."""
     print(f"[RESUBMIT FRESH] Checking for unfinished jobs in {split_path}")
     resubmit_script = os.path.expanduser("~/Circumpolar_TEM_aux_scripts/resubmit_unfinished_fresh.py")
-    run_cmd(f"python {resubmit_script} {split_path}")
+    prefix_arg = f"--job-name-prefix {job_name_prefix}" if job_name_prefix else ""
+    run_cmd(f"python {resubmit_script} {split_path} {prefix_arg}")
 
 def run_batch_scenario(split_path):
     #before submitting batches check for completion
@@ -216,14 +218,40 @@ def run_batch_scenario(split_path):
         print(f"Executing batch run... ")
         run_cmd(f"bp batch run -b {split_path}")
 
-def wait_for_jobs():
-    print("[WAIT] Waiting for jobs to finish...")
+def wait_for_jobs(job_name_pattern=None):
+    """
+    Wait for jobs to finish, optionally filtered by job name pattern.
+    
+    Args:
+        job_name_pattern: If provided, only wait for jobs matching this pattern in their name
+    """
+    if job_name_pattern:
+        print(f"[WAIT] Waiting for jobs matching '{job_name_pattern}' to finish...")
+    else:
+        print("[WAIT] Waiting for all jobs to finish...")
+    
     while True:
-        result = subprocess.run(["squeue", "-u", os.getenv("USER")], capture_output=True, text=True)
-        if len(result.stdout.strip().splitlines()) <= 1:
+        result = subprocess.run(
+            ["squeue", "-u", os.getenv("USER"), "-o", "%.18i %.8T %.50j %.10M"],
+            capture_output=True, text=True
+        )
+        
+        lines = result.stdout.strip().splitlines()
+        if len(lines) <= 1:
             print("[DONE] All jobs finished.")
             break
-        print("[INFO] Still running... will check again in 5 minutes.")
+        
+        # Filter by pattern if specified
+        if job_name_pattern:
+            matching_jobs = [line for line in lines[1:] if job_name_pattern.lower() in line.lower()]
+            if not matching_jobs:
+                print(f"[DONE] No jobs matching '{job_name_pattern}' found.")
+                break
+            print(f"[INFO] {len(matching_jobs)} jobs matching '{job_name_pattern}' still running...")
+        else:
+            print(f"[INFO] {len(lines)-1} jobs still running...")
+        
+        print("[INFO] Will check again in 5 minutes.")
         time.sleep(300)
 
 def trim_sc_files(sc_path):
@@ -259,7 +287,7 @@ def split_rest_scenarios(path_to_folder, tile_name, base_scenario_name):
     for scenario in scenarios_nosplit:
         input_path = scenario_dir / scenario
         output_path = f"{input_path}_split"
-        run_cmd(f"bp batch split -i {input_path} -b {output_path}")
+        run_cmd(f"bp batch split -i {input_path} -b {output_path} --job-name-prefix {tile_name} -sp dask")
     return scenarios_nosplit
 
 def modify_new_scenarios(path_to_folder, tile_name, base_scenario_name, scenarios):
@@ -272,9 +300,9 @@ def process_remaining_scenarios(path_to_folder, tile_name, scenarios):
     for scenario in scenarios:
         split_path = f"{path_to_folder}/{tile_name}_sc/{scenario}_split"
         run_batch_scenario(split_path)
-        wait_for_jobs()
-        resubmit_unfinished_jobs_fresh(split_path)
-        wait_for_jobs()
+        wait_for_jobs(f"{tile_name}-{scenario}_split")
+        resubmit_unfinished_jobs_fresh(split_path, tile_name)
+        wait_for_jobs(f"{tile_name}-{scenario}_split")
         trim_sc_files(split_path)
         merge_and_plot(split_path)
 
@@ -361,9 +389,9 @@ def main():
         # full pipeline uses your splitter to derive the base scenario path
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
         run_batch_scenario(base_split_path)
-        wait_for_jobs()
-        resubmit_unfinished_jobs(base_split_path)
-        wait_for_jobs()
+        wait_for_jobs(f"{tile_name}-{base_scenario_name}_split")
+        resubmit_unfinished_jobs(base_split_path, tile_name)
+        wait_for_jobs(f"{tile_name}-{base_scenario_name}_split")
         merge_and_plot(base_split_path)
 
         # scenario processing
@@ -385,9 +413,9 @@ def main():
         # full pipeline uses your splitter to derive the base scenario path
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
         run_batch_scenario(base_split_path)
-        wait_for_jobs()
-        resubmit_unfinished_jobs(base_split_path)
-        wait_for_jobs()
+        wait_for_jobs(f"{tile_name}-{base_scenario_name}_split")
+        resubmit_unfinished_jobs(base_split_path, tile_name)
+        wait_for_jobs(f"{tile_name}-{base_scenario_name}_split")
         merge_and_plot(base_split_path)
 
     else:
@@ -417,8 +445,8 @@ def main():
             for scenario_i in scenario_list:
                 full_scenario_path = os.path.join(path_to_tile, scenario_i)
                 print(full_scenario_path)
-                resubmit_unfinished_jobs_fresh(full_scenario_path)
-                wait_for_jobs()
+                resubmit_unfinished_jobs_fresh(full_scenario_path, tile_name)
+                wait_for_jobs(f"{tile_name}-{scenario_i}")
                 trim_sc_files(full_scenario_path)
                 merge_and_plot(full_scenario_path)
                 sync_scenario_to_bucket(args.bucket_path,tile_name,scenario_i)

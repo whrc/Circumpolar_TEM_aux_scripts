@@ -42,6 +42,36 @@ def count_run_ones(file_path):
         print(f"[ERROR] Failed to read run mask {file_path}: {e}")
         return 0
 
+def update_job_name_in_slurm(slurm_file, job_name_prefix, scenario_name, batch_idx):
+    """Update the job name in slurm_runner.sh to include the job_name_prefix.
+    
+    Args:
+        slurm_file (Path): Path to slurm_runner.sh
+        job_name_prefix (str): Prefix to add (e.g., tile name like H10_V16)
+        scenario_name (str): Scenario directory name (e.g., ssp1_2_6_mri_esm2_0_split)
+        batch_idx (int): Batch index
+    """
+    if not slurm_file.exists():
+        return False
+    
+    try:
+        content = slurm_file.read_text()
+        new_job_name = f"{job_name_prefix}-{scenario_name}-batch-{batch_idx}"
+        
+        # Replace the #SBATCH --job-name line
+        content = re.sub(
+            r'#SBATCH --job-name=.*',
+            f'#SBATCH --job-name={new_job_name}',
+            content
+        )
+        
+        slurm_file.write_text(content)
+        print(f"[UPDATE] Updated job name to: {new_job_name}")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to update job name in {slurm_file}: {e}")
+        return False
+
 def check_batch_status(batch_dir):
     """Check if a batch is finished by comparing completed vs expected runs.
     
@@ -81,6 +111,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("split_dir", help="Path like H7_V15_sc/ssp1_2_6_access_cm2_split/")
     ap.add_argument("--dry-run", action="store_true", help="Print actions without submitting")
+    ap.add_argument("--job-name-prefix", help="Prefix to add to job names (e.g., tile name)")
     args = ap.parse_args()
 
     split_path = pathlib.Path(args.split_dir).resolve()
@@ -114,6 +145,9 @@ def main():
 
     print(f"[INFO] Unfinished batches: {', '.join(map(str, sorted(unfinished)))}")
 
+    # Get scenario name from split_path
+    scenario_name = split_path.name
+    
     resubmitted = 0
     for idx in sorted(unfinished):
         batch_dir = split_path / f"batch_{idx}"
@@ -121,6 +155,10 @@ def main():
         if not slurm.exists():
             print(f"[WARN] Missing slurm_runner.sh: {slurm} — skipping")
             continue
+
+        # Update job name if prefix provided
+        if args.job_name_prefix:
+            update_job_name_in_slurm(slurm, args.job_name_prefix, scenario_name, idx)
 
         if args.dry_run:
             print(f"[DRY-RUN] sbatch {slurm}")

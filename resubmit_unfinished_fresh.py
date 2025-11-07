@@ -142,7 +142,7 @@ def update_config_paths(path_to_scenario, batch_idx):
 
 
 
-def update_slurm_runner(path_to_scenario, slurm_file,  batch_idx, dry_run=False):
+def update_slurm_runner(path_to_scenario, slurm_file, batch_idx, job_name_prefix=None, dry_run=False):
     """
     Update slurm_runner.sh by trimming everything after 'module load openmpi'
     and appending a fresh mpirun run command.
@@ -150,9 +150,8 @@ def update_slurm_runner(path_to_scenario, slurm_file,  batch_idx, dry_run=False)
     Args:
         path_to_scenario (str or Path): Base path to scenario (e.g., /.../H11_V16_sc/ssp1_2_6_gfdl_esm4_split)
         slurm_file (Path): Path to slurm_runner.sh
-        tile_path (str): Full tile path (unused in this version)
-        scenario (str): Scenario name (e.g., ssp5_8_5_mri_esm2_0_split)
         batch_idx (int): Batch index (e.g., 0, 1, 2)
+        job_name_prefix (str): Optional prefix for job name (e.g., tile name)
         dry_run (bool): If True, only simulate changes without writing
     Returns:
         bool: True if update successful or would succeed
@@ -167,14 +166,20 @@ def update_slurm_runner(path_to_scenario, slurm_file,  batch_idx, dry_run=False)
         new_lines = []
         openmpi_found = False
 
-        # Construct batch path
+        # Construct batch path and scenario name
         batch_path = f"{path_to_scenario}/batch_{batch_idx}"
+        scenario_name = Path(path_to_scenario).name
         fresh_run_cmd = f"mpirun --use-hwthread-cpus /opt/apps/dvm-dos-tem/dvmdostem -f {batch_path}/config/config.js -l disabled --max-output-volume=-1 -p 100 -e 2000 -s 200 -t 124 -n 76"
 
         for line in lines:
             # Update SBATCH -o line
             if line.strip().startswith("#SBATCH -o"):
                 new_lines.append(f"#SBATCH -o {path_to_scenario}/logs/batch-{batch_idx}")
+                continue
+            # Update job name if prefix provided
+            if line.strip().startswith("#SBATCH --job-name") and job_name_prefix:
+                new_job_name = f"{job_name_prefix}-{scenario_name}-batch-{batch_idx}"
+                new_lines.append(f"#SBATCH --job-name={new_job_name}")
                 continue
             new_lines.append(line)
             if "module load openmpi" in line:
@@ -241,6 +246,7 @@ def main():
     ap.add_argument("split_dir", help="Path like H7_V15_sc/ssp1_2_6_access_cm2_split/")
     ap.add_argument("--dry-run", action="store_true", help="Print actions without modifying files or submitting jobs")
     ap.add_argument("--no-submit", action="store_true", help="Update files but don't submit jobs")
+    ap.add_argument("--job-name-prefix", help="Prefix to add to job names (e.g., tile name)")
     args = ap.parse_args()
 
     split_path = pathlib.Path(args.split_dir).resolve()
@@ -286,8 +292,7 @@ def main():
             continue
         
         # Update the slurm_runner.sh file
-        #update_slurm_runner(slurm, tile_path, scenario, idx, args.dry_run)
-        if update_slurm_runner(split_path, slurm,  idx, args.dry_run):
+        if update_slurm_runner(split_path, slurm, idx, args.job_name_prefix, args.dry_run):
             updated += 1
             updated_batches.append((idx, batch_dir, slurm))
         #print('updated batches:',updated_batches)

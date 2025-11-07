@@ -13,30 +13,16 @@ import argparse
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='Run automation script for multiple tiles')
-parser.add_argument('tiles_file', help='Path to the text file containing tiles (one per line)')
+parser.add_argument('tile_name', help='Name of the tile to run')
 args = parser.parse_args()
 
-tiles_file = args.tiles_file
-try:
-    with open(tiles_file, 'r') as f:
-        scs = [line.strip() for line in f.readlines() if line.strip()]
-except FileNotFoundError:
-    print(f"Error: {tiles_file} not found. Please create a file with tiles separated by new lines.")
-    exit(1)
-except Exception as e:
-    print(f"Error reading {tiles_file}: {e}")
-    exit(1)
-
-if not scs:
-    print(f"Error: No tiles found in {tiles_file}")
-    exit(1)
+tile_name = args.tile_name
 log_dir = "LOG"
 
 os.makedirs(log_dir, exist_ok=True)
 
-for tile in scs:
-    log_file = os.path.join(log_dir, f"{tile}ssp26.log")
-   #cmd = f"python ~/Circumpolar_TEM_aux_scripts/automation_script.py {tile} --mode full > {log_file} 2>&1"
-    cmd = f"python ~/Circumpolar_TEM_aux_scripts/automation_script.py {tile} --mode sc -bucket circumpolar_model_output/recent2  --base-scenario-name ssp5_8_5_mri_esm2_0 > {log_file} 2>&1"
-    print(f"Running: {cmd}")
-    subprocess.run(cmd, shell=True)
+log_file = os.path.join(log_dir, f"{tile_name}ssp26.log")
+cmd = f"python ~/Circumpolar_TEM_aux_scripts/automation_script.py {tile_name} --mode full > {log_file} 2>&1"
+# cmd = f"python ~/Circumpolar_TEM_aux_scripts/automation_script.py {tile_name} --mode sc -bucket circumpolar_model_output/recent2  --base-scenario-name ssp5_8_5_mri_esm2_0 > {log_file} 2>&1"
+print(f"Running: {cmd}")
+subprocess.run(cmd, shell=True)
