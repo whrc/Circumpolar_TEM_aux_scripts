@@ -35,8 +35,8 @@ log_dir = "LOG"
 os.makedirs(log_dir, exist_ok=True)
 
 for tile in scs:
-    log_file = os.path.join(log_dir, f"{tile}ssp26.log")
-   #cmd = f"python ~/Circumpolar_TEM_aux_scripts/automation_script.py {tile} --mode full > {log_file} 2>&1"
-    cmd = f"python ~/Circumpolar_TEM_aux_scripts/automation_script.py {tile} --mode sc -bucket circumpolar_model_output/recent2  --base-scenario-name ssp5_8_5_mri_esm2_0 > {log_file} 2>&1"
+    log_file = os.path.join(log_dir, f"{tile}.log")
+    cmd = f"python ~/Circumpolar_TEM_aux_scripts/automation_script.py {tile} --mode full > {log_file} 2>&1"
+   #cmd = f"python ~/Circumpolar_TEM_aux_scripts/automation_script.py {tile} --mode sc -bucket circumpolar_model_output/recent2  --base-scenario-name ssp5_8_5_mri_esm2_0 > {log_file} 2>&1"
     print(f"Running: {cmd}")
     subprocess.run(cmd, shell=True)
