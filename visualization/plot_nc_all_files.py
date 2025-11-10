@@ -32,28 +32,6 @@ def plot_variable(nc_file, variable_name):
             # Extract data
             var_data = nc.variables[variable_name][:]
             
-            # Handle 4D data with layer dimension - extract layer 0
-            layer_extracted = False
-            if 'layer' in nc.dimensions:
-                var_dims = nc.variables[variable_name].dimensions
-                if len(var_dims) == 4 and 'layer' in var_dims:
-                    layer_idx = var_dims.index('layer')
-                    print(f"Detected 4D data with dimensions: {var_dims}")
-                    print(f"Extracting layer index 0 from position {layer_idx}")
-                    
-                    # Extract layer 0 based on its position in dimensions
-                    if layer_idx == 1:  # (time, layer, y, x)
-                        var_data = var_data[:, 0, :, :]
-                    elif layer_idx == 0:  # (layer, time, y, x) - unlikely but handle it
-                        var_data = var_data[0, :, :, :]
-                    elif layer_idx == 2:  # (time, y, layer, x) - unlikely but handle it
-                        var_data = var_data[:, :, 0, :]
-                    elif layer_idx == 3:  # (time, y, x, layer) - unlikely but handle it
-                        var_data = var_data[:, :, :, 0]
-                    
-                    layer_extracted = True
-                    print(f"✅ Extracted layer 0, new shape: {var_data.shape}")
-            
             # Handle masked arrays properly - convert masked values to NaN
             if isinstance(var_data, np.ma.MaskedArray):
                 var_data = np.ma.filled(var_data, np.nan)
@@ -111,12 +89,9 @@ def plot_variable(nc_file, variable_name):
             # Plot
             fig, axes = plt.subplots(1, 3, figsize=(12, 5))
 
-            # Add layer indicator to titles if layer was extracted
-            layer_suffix = " (Layer=0)" if layer_extracted else ""
-
             # Plot var_data at first time step
             im0 = axes[0].imshow(np.fliplr(var_data[0,:,:].T), cmap="viridis", origin="lower", aspect="auto")
-            axes[0].set_title(f"{variable_name} - First Year{layer_suffix}")
+            axes[0].set_title(f"{variable_name} - First Year")
             axes[0].set_xlabel("X")
             axes[0].set_ylabel("Y")
             # Get units from variable if available
@@ -125,7 +100,7 @@ def plot_variable(nc_file, variable_name):
 
             # Plot var_data at last time step
             imN = axes[1].imshow(np.fliplr(var_data[-1,:,:].T), cmap="viridis", origin="lower", aspect="auto")
-            axes[1].set_title(f"{variable_name} - Last Year{layer_suffix}")
+            axes[1].set_title(f"{variable_name} - Last Year")
             axes[1].set_xlabel("X")
             axes[1].set_ylabel("Y")
             fig.colorbar(imN, ax=axes[1], label=f"{variable_name} ({units})" if units else variable_name)

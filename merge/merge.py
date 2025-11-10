@@ -170,6 +170,8 @@ else:
     print(os.path.join(temdir, 'output_spec.csv'), 'does not exist')
     sys.exit()
 
+varlist=['EET', 'RECO', 'SNOWTHICK', 'AVLN', 'VEGC', 'ALD', 'GPP', 'SHLWC']
+print('varlist:',varlist)
 
 ## Variable loop 
 for var in varlist:
