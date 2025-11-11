@@ -21,7 +21,11 @@ The debuging process:
    ```  
 5. Then sync the `all_merged` folder to the correspoding folder in the bucket
    ```bash
-   python ~/Circumpolar_TEM_aux_scripts/sync_tile_to_bucket.py H19_V7 --sync --all_merged ssp5_8_5_mri_esm2_0 /mnt/exacloud/ejafarov_woodwellclimate_org/fix_unfinished_job 
+   python ~/Circumpolar_TEM_aux_scripts/sync_tile_to_bucket.py TILE_ID --sync --all_merged ssp5_8_5_mri_esm2_0 /mnt/exacloud/ejafarov_woodwellclimate_org/fix_unfinished_job 
+   ```
+   combine steps 4 and 5
+   ```bash
+   python ~/Circumpolar_TEM_aux_scripts/sync_tile_to_bucket.py TILE_ID --trim --merge --sync --all_merged ssp1_2_6_mri_esm2_0 /mnt/exacloud/ejafarov_woodwellclimate_org/fix_unfinished_job --force-merge
    ```
 6. If instead `ssp1_2_6` is incomplete then do step **3** for `ssp1_2_6`. IF not completed or `<90%` completion, it is better to re-submit. NOTE: base-case is set to `ssp1_2_6`, so we need to re-assign the base-case. 
    ```bash
