@@ -12,6 +12,12 @@ Usage:
   python resubmit_unfinished_fresh.py <SPLIT_DIR> --dry-run
   # Update files but DON'T submit jobs yet
   python resubmit_unfinished_fresh.py <SPLIT_DIR> --no-submit
+  # Set partition to spot
+  python resubmit_unfinished_fresh.py <SPLIT_DIR> --p spot
+  # Remove walltime line
+  python resubmit_unfinished_fresh.py <SPLIT_DIR> --nowalltime
+  # Combine options
+  python resubmit_unfinished_fresh.py <SPLIT_DIR> --p spot --nowalltime --dry-run
 
 
 """
@@ -133,8 +139,12 @@ def update_config_paths(path_to_scenario, batch_idx):
             replacement = f'"{key}": "{new_path}"'
             content = re.sub(pattern, replacement, content)
 
+        # Update cell_timelimit from 3600 to 7200
+        content = re.sub(r'"cell_timelimit":\s*3600,', '"cell_timelimit": 7200,', content)
+
         config_path.write_text(content)
         print(f"[UPDATE] Updated paths in: {config_path}")
+        print(f"[UPDATE] Updated cell_timelimit to 7200")
         return True
     except Exception as e:
         print(f"[ERROR] Failed to update config.js: {e}")
@@ -142,7 +152,7 @@ def update_config_paths(path_to_scenario, batch_idx):
 
 
 
-def update_slurm_runner(path_to_scenario, slurm_file,  batch_idx, dry_run=False):
+def update_slurm_runner(path_to_scenario, slurm_file,  batch_idx, dry_run=False, partition=None, nowalltime=False):
     """
     Update slurm_runner.sh by trimming everything after 'module load openmpi'
     and appending a fresh mpirun run command.
@@ -154,6 +164,8 @@ def update_slurm_runner(path_to_scenario, slurm_file,  batch_idx, dry_run=False)
         scenario (str): Scenario name (e.g., ssp5_8_5_mri_esm2_0_split)
         batch_idx (int): Batch index (e.g., 0, 1, 2)
         dry_run (bool): If True, only simulate changes without writing
+        partition (str): If provided, rewrites #SBATCH -p line with this partition
+        nowalltime (bool): If True, removes #SBATCH --time= line
     Returns:
         bool: True if update successful or would succeed
     """
@@ -176,6 +188,16 @@ def update_slurm_runner(path_to_scenario, slurm_file,  batch_idx, dry_run=False)
             if line.strip().startswith("#SBATCH -o"):
                 new_lines.append(f"#SBATCH -o {path_to_scenario}/logs/batch-{batch_idx}")
                 continue
+            
+            # Handle partition rewrite
+            if partition and line.strip().startswith("#SBATCH -p"):
+                new_lines.append(f"#SBATCH -p {partition}")
+                continue
+            
+            # Handle walltime removal
+            if nowalltime and line.strip().startswith("#SBATCH --time="):
+                continue  # Skip this line (remove it)
+            
             new_lines.append(line)
             if "module load openmpi" in line:
                 openmpi_found = True
@@ -191,6 +213,10 @@ def update_slurm_runner(path_to_scenario, slurm_file,  batch_idx, dry_run=False)
         # Dry-run check
         if dry_run:
             print(f"[DRY-RUN] Would update {slurm_file}")
+            if partition:
+                print(f"[DRY-RUN] Would set partition to: {partition}")
+            if nowalltime:
+                print(f"[DRY-RUN] Would remove walltime line")
             #print(f"[DRY-RUN] New content:")
             #print("\n".join(new_lines))
             return True
@@ -199,6 +225,10 @@ def update_slurm_runner(path_to_scenario, slurm_file,  batch_idx, dry_run=False)
         slurm_file.write_text("\n".join(new_lines) + "\n")
         print(f"[UPDATE] Rewrote {slurm_file} after 'module load openmpi'")
         print(f"[UPDATE] Added fresh run command: {fresh_run_cmd}")
+        if partition:
+            print(f"[UPDATE] Set partition to: {partition}")
+        if nowalltime:
+            print(f"[UPDATE] Removed walltime line")
         update_config_paths(path_to_scenario, batch_idx)
 
         return True
@@ -241,6 +271,8 @@ def main():
     ap.add_argument("split_dir", help="Path like H7_V15_sc/ssp1_2_6_access_cm2_split/")
     ap.add_argument("--dry-run", action="store_true", help="Print actions without modifying files or submitting jobs")
     ap.add_argument("--no-submit", action="store_true", help="Update files but don't submit jobs")
+    ap.add_argument("--p", dest="partition", help="Set SLURM partition (e.g., 'spot')")
+    ap.add_argument("--nowalltime", action="store_true", help="Remove #SBATCH --time= line from slurm scripts")
     args = ap.parse_args()
 
     split_path = pathlib.Path(args.split_dir).resolve()
@@ -287,7 +319,7 @@ def main():
         
         # Update the slurm_runner.sh file
         #update_slurm_runner(slurm, tile_path, scenario, idx, args.dry_run)
-        if update_slurm_runner(split_path, slurm,  idx, args.dry_run):
+        if update_slurm_runner(split_path, slurm,  idx, args.dry_run, args.partition, args.nowalltime):
             updated += 1
             updated_batches.append((idx, batch_dir, slurm))
         #print('updated batches:',updated_batches)
@@ -312,5 +344,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 

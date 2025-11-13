@@ -202,7 +202,7 @@ def resubmit_unfinished_jobs_fresh(split_path):
     """Run the resubmit_unfinished.py script to resubmit any unfinished jobs."""
     print(f"[RESUBMIT FRESH] Checking for unfinished jobs in {split_path}")
     resubmit_script = os.path.expanduser("~/Circumpolar_TEM_aux_scripts/resubmit_unfinished_fresh.py")
-    run_cmd(f"python {resubmit_script} {split_path}")
+    run_cmd(f"python {resubmit_script} {split_path} --p dusk")
 
 def run_batch_scenario(split_path):
     #before submitting batches check for completion
@@ -335,6 +335,11 @@ def main():
         "--bucket-path",
         help="Google Cloud Storage path to a file containing tile IDs (e.g., gs://bucket/tiles.txt). When specified, processes multiple tiles in sc mode.",
     )
+    parser.add_argument(
+        "--nopull",
+        action="store_true",
+        help="Skip pulling existing tile output from the bucket",
+    )
     args = parser.parse_args()
 
     tile_name = args.tile_name
@@ -398,7 +403,10 @@ def main():
 
             print("[MODE] sc-bucket — processing multiple tiles from bucket")
             #ex: python ~/Circumpolar_TEM_aux_scripts/automation_script.py H8_V16 --mode sc -bucket circumpolar_model_output/recent2
-            pull_exisitng_tile_output_from_bucket(args.bucket_path,tile_name)
+            if not args.nopull:
+                pull_exisitng_tile_output_from_bucket(args.bucket_path,tile_name)
+            else:
+                print("[INFO] Skipping pull from bucket (--nopull flag set)")
 
             path_to_tile = os.path.join(path_to_folder, tile_name + '_sc')
 
