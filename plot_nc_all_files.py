@@ -115,7 +115,7 @@ def plot_variable(nc_file, variable_name):
             layer_suffix = " (Layer=0)" if layer_extracted else ""
 
             # Plot var_data at first time step
-            im0 = axes[0].imshow(np.fliplr(var_data[0,:,:].T), cmap="viridis", origin="lower", aspect="auto")
+            im0 = axes[0].imshow(np.flipud(var_data[0,:,:].T), cmap="viridis", origin="lower", aspect="auto")
             axes[0].set_title(f"{variable_name} - First Year{layer_suffix}")
             axes[0].set_xlabel("X")
             axes[0].set_ylabel("Y")
@@ -124,7 +124,7 @@ def plot_variable(nc_file, variable_name):
             fig.colorbar(im0, ax=axes[0], label=f"{variable_name} ({units})" if units else variable_name)
 
             # Plot var_data at last time step
-            imN = axes[1].imshow(np.fliplr(var_data[-1,:,:].T), cmap="viridis", origin="lower", aspect="auto")
+            imN = axes[1].imshow(np.flipud(var_data[-1,:,:].T), cmap="viridis", origin="lower", aspect="auto")
             axes[1].set_title(f"{variable_name} - Last Year{layer_suffix}")
             axes[1].set_xlabel("X")
             axes[1].set_ylabel("Y")
