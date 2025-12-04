@@ -5,6 +5,9 @@ Script to extract failed cells from a batch and create a retry batch.
 This script reads run_status.nc to identify cells that failed (status != 100 and != 0),
 then creates a retry batch with only those cells enabled in the run-mask.nc.
 
+After the retry batch completes, use --merge to merge successful results back into
+the original batch.
+
 Usage:
     python extract_failed_cells.py <batch_path> [options]
     
@@ -17,6 +20,9 @@ Examples:
     
     # Force overwrite existing retry directory
     python extract_failed_cells.py ~/test_batches/batch_18 --force
+    
+    # Merge retry results back into original batch
+    python extract_failed_cells.py ~/test_batches/batch_18 --merge
 """
 
 import os
@@ -515,6 +521,328 @@ def update_retry_config(retry_path, batch_path, dry_run=False):
         return False
 
 
+def merge_retry_results(batch_path, retry_path, dry_run=False):
+    """
+    Merge results from retry batch into a merged directory.
+    
+    This function creates a 'merged' directory in the batch_path and merges
+    successful results from the retry batch into it. The original batch files
+    are not modified - all merged results go into batch_path/merged/.
+    
+    This function:
+    1. Creates a 'merged' directory structure (merged/output and merged/input)
+    2. Copies original files to merged directory
+    3. Merges run_status.nc: updates merged batch with successful cells from retry
+    4. Merges output files: copies/merges output NetCDF files from retry to merged
+    5. Updates run-mask.nc in merged batch to reflect newly successful cells
+    
+    Args:
+        batch_path (Path): Path to the original batch directory
+        retry_path (Path): Path to the retry batch directory
+        dry_run (bool): If True, don't actually modify files
+        
+    Returns:
+        tuple: (success, stats_dict) where stats_dict contains merge statistics
+               including 'merged_path' pointing to the merged directory
+    """
+    try:
+        # Create merged directory structure
+        merged_path = batch_path / "merged"
+        merged_output_dir = merged_path / "output"
+        merged_input_dir = merged_path / "input"
+        
+        # Paths to files
+        original_status_file = batch_path / "output" / "run_status.nc"
+        retry_status_file = retry_path / "output" / "run_status.nc"
+        original_mask_file = batch_path / "input" / "run-mask.nc"
+        original_output_dir = batch_path / "output"
+        retry_output_dir = retry_path / "output"
+        
+        # Merged file paths
+        merged_status_file = merged_output_dir / "run_status.nc"
+        merged_mask_file = merged_input_dir / "run-mask.nc"
+        
+        # Validate files exist
+        if not retry_status_file.exists():
+            print(f"Error: Retry run_status.nc not found: {retry_status_file}", file=sys.stderr)
+            return False, {}
+        
+        if not original_status_file.exists():
+            print(f"Error: Original run_status.nc not found: {original_status_file}", file=sys.stderr)
+            return False, {}
+        
+        # Create merged directory structure if not in dry run
+        if not dry_run:
+            merged_output_dir.mkdir(parents=True, exist_ok=True)
+            merged_input_dir.mkdir(parents=True, exist_ok=True)
+            print(f"Created merged directory: {merged_path}")
+        
+        # Read original run_status
+        ds_original = xr.open_dataset(original_status_file, decode_times=False)
+        original_status = ds_original['run_status'].values.copy()
+        
+        # Read retry run_status
+        ds_retry = xr.open_dataset(retry_status_file, decode_times=False)
+        retry_status = ds_retry['run_status'].values
+        
+        # Validate shapes match
+        if original_status.shape != retry_status.shape:
+            print(f"Error: Shape mismatch between original and retry run_status!", file=sys.stderr)
+            print(f"  Original shape: {original_status.shape}", file=sys.stderr)
+            print(f"  Retry shape: {retry_status.shape}", file=sys.stderr)
+            ds_original.close()
+            ds_retry.close()
+            return False, {}
+        
+        # Identify cells that became successful in retry
+        # These are cells where retry_status == 100 and original_status != 100
+        newly_successful_mask = (retry_status == 100) & (original_status != 100)
+        newly_successful_count = int(np.sum(newly_successful_mask))
+        
+        # Count cells that were already successful
+        already_successful = int(np.sum((original_status == 100) & (retry_status == 100)))
+        
+        # Count cells that failed in retry
+        retry_failed = int(np.sum((retry_status != 100) & (retry_status != 0) & ~np.isnan(retry_status)))
+        
+        if dry_run:
+            print(f"[DRY RUN] Would merge retry results into: {merged_path}")
+            print(f"  - Would update {newly_successful_count} newly successful cells")
+            print(f"  - {already_successful} cells were already successful")
+            print(f"  - {retry_failed} cells still failed in retry")
+            
+            # Count output files that would be merged
+            if retry_output_dir.exists():
+                output_files = list(retry_output_dir.glob("*.nc"))
+                print(f"  - Would merge {len(output_files)} output NetCDF file(s)")
+            
+            ds_original.close()
+            ds_retry.close()
+            return True, {
+                'newly_successful': newly_successful_count,
+                'already_successful': already_successful,
+                'retry_failed': retry_failed
+            }
+        
+        # Copy original run_status.nc to merged directory first
+        shutil.copy2(original_status_file, merged_status_file)
+        
+        # Update merged run_status with successful cells from retry
+        merged_status = original_status.copy()
+        merged_status[newly_successful_mask] = 100
+        
+        # Create updated dataset from original
+        ds_updated = ds_original.copy()
+        ds_updated['run_status'].values[:] = merged_status
+        
+        # Also merge other variables from retry (like total_runtime)
+        # Update values where retry has valid data (not masked, not fill value)
+        for var_name in ds_retry.data_vars:
+            if var_name == 'run_status':
+                continue  # Already handled above
+            
+            if var_name in ds_updated.data_vars:
+                retry_var_data = ds_retry[var_name].values
+                merged_var_data = ds_updated[var_name].values
+                
+                # Create mask for valid retry data (not masked=0, not fill value)
+                if hasattr(ds_retry[var_name], '_FillValue'):
+                    fill_value = ds_retry[var_name]._FillValue
+                    # Valid where retry is not 0 (masked), not fill value, and not NaN (if float)
+                    if np.issubdtype(retry_var_data.dtype, np.floating):
+                        valid_mask = (retry_var_data != 0) & (retry_var_data != fill_value) & ~np.isnan(retry_var_data)
+                    else:
+                        valid_mask = (retry_var_data != 0) & (retry_var_data != fill_value)
+                else:
+                    # No fill value, just check not masked (0)
+                    if np.issubdtype(retry_var_data.dtype, np.floating):
+                        valid_mask = (retry_var_data != 0) & ~np.isnan(retry_var_data)
+                    else:
+                        valid_mask = (retry_var_data != 0)
+                
+                # Update merged data where retry has valid data
+                merged_var_data[valid_mask] = retry_var_data[valid_mask]
+                ds_updated[var_name].values[:] = merged_var_data
+        
+        # Close datasets before writing
+        ds_original.close()
+        ds_retry.close()
+        
+        # Write updated run_status.nc to merged directory
+        temp_file = merged_status_file.parent / f".{merged_status_file.name}.tmp"
+        ds_updated.to_netcdf(temp_file)
+        ds_updated.close()
+        
+        # Replace merged file
+        merged_status_file.unlink()
+        temp_file.rename(merged_status_file)
+        
+        # Verify we wrote to the correct location
+        if not merged_status_file.exists():
+            print(f"Error: Failed to write merged run_status.nc to {merged_status_file}", file=sys.stderr)
+            return False, {}
+        
+        print(f"✓ Merged run_status.nc to {merged_status_file}:")
+        print(f"  - Updated {newly_successful_count} newly successful cells")
+        print(f"  - {already_successful} cells were already successful")
+        print(f"  - {retry_failed} cells still failed in retry")
+        
+        if retry_failed > 0:
+            print(f"\n⚠ Note: {retry_failed} cells still failed, but merging all output files regardless of status.")
+        
+        # Merge output files (merge all files regardless of success status)
+        output_files_merged = 0
+        if retry_output_dir.exists() and original_output_dir.exists():
+            # Get list of NetCDF files in retry output
+            retry_output_files = list(retry_output_dir.glob("*.nc"))
+            
+            for retry_file in retry_output_files:
+                # Skip run_status.nc as we already handled it
+                if retry_file.name == "run_status.nc":
+                    continue
+                
+                original_file = original_output_dir / retry_file.name
+                merged_file = merged_output_dir / retry_file.name
+                
+                # If file exists in original, we need to merge the data
+                # Copy original to merged first, then merge retry data
+                if original_file.exists():
+                    # Copy original file to merged directory first
+                    shutil.copy2(original_file, merged_file)
+                    
+                    try:
+                        # Merge NetCDF files: update values where retry has data
+                        ds_merged = xr.open_dataset(merged_file, decode_times=False)
+                        ds_ret = xr.open_dataset(retry_file, decode_times=False)
+                        
+                        # For each data variable, update values where retry has valid data
+                        # This is a simple merge: retry values overwrite merged where retry has data
+                        for var_name in ds_ret.data_vars:
+                            if var_name in ds_merged.data_vars:
+                                # Update values where retry has non-missing data
+                                retry_data = ds_ret[var_name].values
+                                merged_data = ds_merged[var_name].values
+                                
+                                # Check if data is scalar (0-dimensional)
+                                is_scalar = retry_data.ndim == 0
+                                
+                                if is_scalar:
+                                    # For scalar values, check if retry value is valid and replace
+                                    retry_dtype = retry_data.dtype
+                                    is_valid = True
+                                    
+                                    # Check validity based on dtype
+                                    if np.issubdtype(retry_dtype, np.floating):
+                                        # For floating point, check for NaN
+                                        if hasattr(ds_ret[var_name], '_FillValue'):
+                                            fill_value = ds_ret[var_name]._FillValue
+                                            is_valid = not np.isnan(retry_data) and (retry_data != fill_value)
+                                        else:
+                                            is_valid = not np.isnan(retry_data)
+                                    else:
+                                        # For integer types, check fill value
+                                        if hasattr(ds_ret[var_name], '_FillValue'):
+                                            fill_value = ds_ret[var_name]._FillValue
+                                            is_valid = (retry_data != fill_value)
+                                        # else: is_valid already True
+                                    
+                                    # Replace scalar value if valid
+                                    if is_valid:
+                                        ds_merged[var_name].values = retry_data
+                                else:
+                                    # For array data, use masking approach
+                                    # Create mask for valid retry data (not NaN, not fill value)
+                                    # Handle different data types appropriately
+                                    retry_dtype = retry_data.dtype
+                                    
+                                    # Check if dtype supports NaN (floating point types)
+                                    if np.issubdtype(retry_dtype, np.floating):
+                                        # For floating point, check for NaN
+                                        if hasattr(ds_ret[var_name], '_FillValue'):
+                                            fill_value = ds_ret[var_name]._FillValue
+                                            valid_mask = ~np.isnan(retry_data) & (retry_data != fill_value)
+                                        else:
+                                            valid_mask = ~np.isnan(retry_data)
+                                    else:
+                                        # For integer types, only check fill value
+                                        if hasattr(ds_ret[var_name], '_FillValue'):
+                                            fill_value = ds_ret[var_name]._FillValue
+                                            valid_mask = (retry_data != fill_value)
+                                        else:
+                                            # No fill value specified, assume all values are valid
+                                            valid_mask = np.ones_like(retry_data, dtype=bool)
+                                    
+                                    # Update merged data where retry has valid data
+                                    merged_data[valid_mask] = retry_data[valid_mask]
+                                    ds_merged[var_name].values[:] = merged_data
+                        
+                        # Write merged dataset
+                        temp_merge_file = merged_file.parent / f".{merged_file.name}.tmp"
+                        ds_merged.to_netcdf(temp_merge_file)
+                        ds_merged.close()
+                        ds_ret.close()
+                        
+                        # Replace merged file
+                        merged_file.unlink()
+                        temp_merge_file.rename(merged_file)
+                        
+                        output_files_merged += 1
+                    except Exception as e:
+                        print(f"Warning: Could not merge {retry_file.name}: {e}", file=sys.stderr)
+                        # Fallback: just copy the retry file
+                        shutil.copy2(retry_file, merged_file)
+                        output_files_merged += 1
+                else:
+                    # File doesn't exist in original, just copy retry file to merged
+                    shutil.copy2(retry_file, merged_file)
+                    output_files_merged += 1
+            
+            if output_files_merged > 0:
+                print(f"✓ Merged {output_files_merged} output file(s) to {merged_output_dir}")
+        
+        # Update run-mask.nc in merged batch to reflect newly successful cells
+        # Set run=0 for cells that are now successful
+        if original_mask_file.exists():
+            # Copy original mask to merged directory first
+            shutil.copy2(original_mask_file, merged_mask_file)
+            
+            ds_mask = xr.open_dataset(merged_mask_file, decode_times=False)
+            run_mask = ds_mask['run'].values.copy()
+            
+            # Set run=0 for newly successful cells
+            run_mask[newly_successful_mask] = 0
+            
+            ds_mask_updated = ds_mask.copy()
+            ds_mask_updated['run'].values[:] = run_mask
+            
+            temp_mask_file = merged_mask_file.parent / f".{merged_mask_file.name}.tmp"
+            ds_mask.close()
+            ds_mask_updated.to_netcdf(temp_mask_file)
+            ds_mask_updated.close()
+            
+            merged_mask_file.unlink()
+            temp_mask_file.rename(merged_mask_file)
+            
+            print(f"✓ Updated run-mask.nc in {merged_mask_file}:")
+            print(f"  - Disabled {newly_successful_count} newly successful cells")
+        
+        stats = {
+            'newly_successful': newly_successful_count,
+            'already_successful': already_successful,
+            'retry_failed': retry_failed,
+            'output_files_merged': output_files_merged,
+            'merged_path': str(merged_path)
+        }
+        
+        return True, stats
+        
+    except Exception as e:
+        print(f"Error merging retry results: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return False, {}
+
+
 def print_summary(batch_path, stats, retry_path, dry_run=False):
     """
     Print a summary of the operation.
@@ -587,6 +915,9 @@ Examples:
   
   # Verbose output with dry run
   %(prog)s ~/test_batches/batch_18 --dry-run --verbose
+  
+  # Merge retry results back into original batch
+  %(prog)s ~/test_batches/batch_18 --merge
 
 Description:
   This script identifies cells that failed during a batch run and creates
@@ -596,6 +927,9 @@ Description:
   The retry batch is created as a subdirectory named 'retry' within the
   source batch directory, with all files copied and run-mask.nc modified
   to only run the failed cells.
+  
+  Use --merge to merge successful results from the retry batch back into
+  the original batch, updating run_status.nc and output files.
         """
     )
     parser.add_argument(
@@ -617,6 +951,11 @@ Description:
         action='store_true',
         help='Show detailed output including failed cell indices'
     )
+    parser.add_argument(
+        '--merge',
+        action='store_true',
+        help='Merge successful results from retry batch back into original batch'
+    )
     
     args = parser.parse_args()
     
@@ -625,12 +964,60 @@ Description:
     retry_path = batch_path / "retry"
     
     print(f"{'='*80}")
-    print("Extract Failed Cells - Create Retry Batch")
+    if args.merge:
+        print("Merge Retry Results - Update Original Batch")
+    else:
+        print("Extract Failed Cells - Create Retry Batch")
     print(f"{'='*80}")
     
     if args.dry_run:
         print("[DRY RUN MODE - No files will be modified]")
         print()
+    
+    # If --merge flag is set, merge results and exit
+    if args.merge:
+        if not retry_path.exists():
+            print(f"Error: Retry batch directory does not exist: {retry_path}", file=sys.stderr)
+            print("Please create a retry batch first before merging results.", file=sys.stderr)
+            sys.exit(1)
+        
+        print("Merging retry results into merged directory...")
+        success, merge_stats = merge_retry_results(batch_path, retry_path, args.dry_run)
+        
+        if not success:
+            print("✗ Failed to merge retry results", file=sys.stderr)
+            sys.exit(1)
+        
+        print()
+        print(f"{'='*80}")
+        print("MERGE SUMMARY")
+        print(f"{'='*80}")
+        print(f"Original batch: {batch_path}")
+        print(f"Retry batch: {retry_path}")
+        if merge_stats and 'merged_path' in merge_stats:
+            print(f"Merged results directory: {merge_stats['merged_path']}")
+        print()
+        if merge_stats:
+            print(f"Newly successful cells: {merge_stats.get('newly_successful', 0)}")
+            print(f"Already successful cells: {merge_stats.get('already_successful', 0)}")
+            retry_failed = merge_stats.get('retry_failed', 0)
+            print(f"Still failed cells: {retry_failed}")
+            print(f"Output files merged: {merge_stats.get('output_files_merged', 0)}")
+        print()
+        if merge_stats and retry_failed > 0:
+            print(f"⚠ Warning: {retry_failed} cells still failed in the retry batch.")
+            print("  Output files have been merged regardless of success status.")
+            print("  Review the merged results to verify data quality.")
+            print()
+        if merge_stats and 'merged_path' in merge_stats:
+            print("⚠ Merged results are in the 'merged' directory.")
+            print("  Review the results before copying them to the original batch.")
+        print(f"{'='*80}")
+        
+        if args.dry_run:
+            print("\nThis was a dry run. Use without --dry-run to merge the results.")
+        
+        return
     
     # Step 1: Validate batch structure
     print("Step 1: Validating batch structure...")
@@ -709,6 +1096,9 @@ Description:
     
     if args.dry_run:
         print("\nThis was a dry run. Use without --dry-run to create the retry batch.")
+    else:
+        print("\nAfter the retry batch completes, use --merge to merge results back:")
+        print(f"  {sys.argv[0]} {batch_path} --merge")
 
 
 if __name__ == "__main__":
