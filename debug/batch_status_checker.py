@@ -111,13 +111,14 @@ def check_run_status(base_folder, nc_file, batch_folder_name):
 
     return m, n
 
-def run_extract_failed_cells(batch_path, script_path=None):
+def run_extract_failed_cells(batch_path, script_path=None, submit=False):
     """
     Run extract_failed_cells.py on a batch.
     
     Args:
         batch_path: Path to the batch directory
         script_path: Path to extract_failed_cells.py script (if None, tries to find it)
+        submit: If True, pass --submit flag to extract_failed_cells.py to auto-submit the job
         
     Returns:
         bool: True if successful, False otherwise
@@ -138,10 +139,15 @@ def run_extract_failed_cells(batch_path, script_path=None):
     try:
         # Run the script with --force flag to overwrite existing retry directory
         cmd = [sys.executable, str(script_path), str(batch_path), "--force"]
+        if submit:
+            cmd.append("--submit")
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode == 0:
-            print(f"✓ Created retry batch for {batch_path}")
+            if submit:
+                print(f"✓ Created and submitted retry batch for {batch_path}")
+            else:
+                print(f"✓ Created retry batch for {batch_path}")
             return True
         else:
             print(f"✗ Failed to create retry batch for {batch_path}", file=sys.stderr)
@@ -167,8 +173,18 @@ if __name__ == "__main__":
         action='store_true',
         help='Create retry batches for all unfinished batches using extract_failed_cells.py'
     )
+    parser.add_argument(
+        '--submit',
+        action='store_true',
+        help='Automatically submit slurm jobs for retry batches after creating them (requires --individual-retry)'
+    )
     
     args = parser.parse_args()
+    
+    # Validate that --submit requires --individual-retry
+    if args.submit and not args.individual_retry:
+        print("Error: --submit flag requires --individual-retry flag", file=sys.stderr)
+        sys.exit(1)
     
     base_folder = args.base_folder
     batch_folders = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith("batch_")]
@@ -236,20 +252,25 @@ if __name__ == "__main__":
     if args.individual_retry:
         if unfinished_batches:
             print(f"\n{'='*80}")
-            print(f"Creating retry batches for {len(unfinished_batches)} unfinished batch(es)...")
+            if args.submit:
+                print(f"Creating and submitting retry batches for {len(unfinished_batches)} unfinished batch(es)...")
+            else:
+                print(f"Creating retry batches for {len(unfinished_batches)} unfinished batch(es)...")
             print(f"{'='*80}")
             
             for batch_path in unfinished_batches:
                 print(f"\nProcessing: {batch_path}")
-                run_extract_failed_cells(batch_path)
+                run_extract_failed_cells(batch_path, submit=args.submit)
             
             print(f"\n{'='*80}")
-            print(f"Finished processing {len(unfinished_batches)} unfinished batch(es)")
+            if args.submit:
+                print(f"Finished creating and submitting {len(unfinished_batches)} unfinished batch(es)")
+            else:
+                print(f"Finished processing {len(unfinished_batches)} unfinished batch(es)")
             print(f"{'='*80}")
         else:
             print("\n✓ All batches are finished - no retry batches needed.")
 
 
 # add --dry-run flag to check if a tile will be retried. percentage > 70%, we'll submit. no job submission.
-# make --submit flag to submit the retry batches
 # automate the job checking and merging like automation_script.py
