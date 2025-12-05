@@ -765,10 +765,12 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
                 target_file = target_output_dir / retry_file.name
                 
                 # If file exists in original, we need to merge the data
-                # Copy original to target first, then merge retry data
+                # Copy original to target first (only if using merged directory), then merge retry data
                 if original_file.exists():
-                    # Copy original file to target directory first
-                    shutil.copy2(original_file, target_file)
+                    # Only copy if we're using a merged directory (target != original)
+                    if use_merged_dir:
+                        # Copy original file to target directory first
+                        shutil.copy2(original_file, target_file)
                     
                     try:
                         # Merge NetCDF files: update values where retry has data
