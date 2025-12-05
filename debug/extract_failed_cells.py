@@ -21,6 +21,9 @@ Examples:
     # Force overwrite existing retry directory
     python extract_failed_cells.py ~/test_batches/batch_18 --force
     
+    # Auto-submit slurm job after creating retry batch
+    python extract_failed_cells.py ~/test_batches/batch_18 --submit
+    
     # Merge retry results back into original batch
     python extract_failed_cells.py ~/test_batches/batch_18 --merge
 """
@@ -31,6 +34,7 @@ import argparse
 import shutil
 import re
 import json
+import subprocess
 from pathlib import Path
 import xarray as xr
 import numpy as np
@@ -523,18 +527,19 @@ def update_retry_config(retry_path, batch_path, dry_run=False):
 
 def merge_retry_results(batch_path, retry_path, dry_run=False):
     """
-    Merge results from retry batch into a merged directory.
+    Merge results from retry batch into original batch or merged directory.
     
-    This function creates a 'merged' directory in the batch_path and merges
-    successful results from the retry batch into it. The original batch files
-    are not modified - all merged results go into batch_path/merged/.
+    This function merges successful results from the retry batch. If all retried
+    cells succeeded, it merges directly into the original batch. Otherwise, it
+    creates a 'merged' directory in the batch_path and merges results there.
     
     This function:
-    1. Creates a 'merged' directory structure (merged/output and merged/input)
-    2. Copies original files to merged directory
-    3. Merges run_status.nc: updates merged batch with successful cells from retry
-    4. Merges output files: copies/merges output NetCDF files from retry to merged
-    5. Updates run-mask.nc in merged batch to reflect newly successful cells
+    1. Determines if merged directory is needed (only if some cells failed)
+    2. Creates a 'merged' directory structure (merged/output and merged/input) if needed
+    3. Copies original files to target directory (merged or original)
+    4. Merges run_status.nc: updates target batch with successful cells from retry
+    5. Merges output files: copies/merges output NetCDF files from retry to target
+    6. Updates run-mask.nc in target batch to reflect newly successful cells
     
     Args:
         batch_path (Path): Path to the original batch directory
@@ -543,7 +548,8 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
         
     Returns:
         tuple: (success, stats_dict) where stats_dict contains merge statistics
-               including 'merged_path' pointing to the merged directory
+               including 'merged_path' (None if merged directly to original) and
+               'use_merged_dir' (bool indicating if merged directory was used)
     """
     try:
         # Create merged directory structure
@@ -570,12 +576,6 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
         if not original_status_file.exists():
             print(f"Error: Original run_status.nc not found: {original_status_file}", file=sys.stderr)
             return False, {}
-        
-        # Create merged directory structure if not in dry run
-        if not dry_run:
-            merged_output_dir.mkdir(parents=True, exist_ok=True)
-            merged_input_dir.mkdir(parents=True, exist_ok=True)
-            print(f"Created merged directory: {merged_path}")
         
         # Read original run_status
         ds_original = xr.open_dataset(original_status_file, decode_times=False)
@@ -605,8 +605,37 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
         # Count cells that failed in retry
         retry_failed = int(np.sum((retry_status != 100) & (retry_status != 0) & ~np.isnan(retry_status)))
         
+        # Determine if we should use merged directory or merge directly to original
+        # If all retried cells succeeded, merge directly to original batch
+        # Otherwise, create merged directory
+        use_merged_dir = retry_failed > 0
+        
+        # Set target paths based on whether we're using merged directory
+        if use_merged_dir:
+            target_output_dir = merged_output_dir
+            target_input_dir = merged_input_dir
+            target_status_file = merged_status_file
+            target_mask_file = merged_mask_file
+        else:
+            # Merge directly to original batch
+            target_output_dir = original_output_dir
+            target_input_dir = batch_path / "input"
+            target_status_file = original_status_file
+            target_mask_file = original_mask_file
+        
+        # Create merged directory structure only if needed and not in dry run
+        if use_merged_dir and not dry_run:
+            merged_output_dir.mkdir(parents=True, exist_ok=True)
+            merged_input_dir.mkdir(parents=True, exist_ok=True)
+            print(f"Created merged directory: {merged_path}")
+        elif not use_merged_dir and not dry_run:
+            print(f"All retried cells succeeded - merging directly into original batch")
+        
         if dry_run:
-            print(f"[DRY RUN] Would merge retry results into: {merged_path}")
+            if use_merged_dir:
+                print(f"[DRY RUN] Would merge retry results into: {merged_path}")
+            else:
+                print(f"[DRY RUN] Would merge retry results directly into original batch: {batch_path}")
             print(f"  - Would update {newly_successful_count} newly successful cells")
             print(f"  - {already_successful} cells were already successful")
             print(f"  - {retry_failed} cells still failed in retry")
@@ -621,11 +650,14 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
             return True, {
                 'newly_successful': newly_successful_count,
                 'already_successful': already_successful,
-                'retry_failed': retry_failed
+                'retry_failed': retry_failed,
+                'use_merged_dir': use_merged_dir,
+                'merged_path': str(merged_path) if use_merged_dir else None
             }
         
-        # Copy original run_status.nc to merged directory first
-        shutil.copy2(original_status_file, merged_status_file)
+        # Copy original run_status.nc to target directory first (if using merged dir)
+        if use_merged_dir:
+            shutil.copy2(original_status_file, target_status_file)
         
         # Update merged run_status with successful cells from retry
         merged_status = original_status.copy()
@@ -668,21 +700,21 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
         ds_original.close()
         ds_retry.close()
         
-        # Write updated run_status.nc to merged directory
-        temp_file = merged_status_file.parent / f".{merged_status_file.name}.tmp"
+        # Write updated run_status.nc to target directory
+        temp_file = target_status_file.parent / f".{target_status_file.name}.tmp"
         ds_updated.to_netcdf(temp_file)
         ds_updated.close()
         
-        # Replace merged file
-        merged_status_file.unlink()
-        temp_file.rename(merged_status_file)
+        # Replace target file
+        target_status_file.unlink()
+        temp_file.rename(target_status_file)
         
         # Verify we wrote to the correct location
-        if not merged_status_file.exists():
-            print(f"Error: Failed to write merged run_status.nc to {merged_status_file}", file=sys.stderr)
+        if not target_status_file.exists():
+            print(f"Error: Failed to write merged run_status.nc to {target_status_file}", file=sys.stderr)
             return False, {}
         
-        print(f"✓ Merged run_status.nc to {merged_status_file}:")
+        print(f"✓ Merged run_status.nc to {target_status_file}:")
         print(f"  - Updated {newly_successful_count} newly successful cells")
         print(f"  - {already_successful} cells were already successful")
         print(f"  - {retry_failed} cells still failed in retry")
@@ -702,17 +734,17 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
                     continue
                 
                 original_file = original_output_dir / retry_file.name
-                merged_file = merged_output_dir / retry_file.name
+                target_file = target_output_dir / retry_file.name
                 
                 # If file exists in original, we need to merge the data
-                # Copy original to merged first, then merge retry data
+                # Copy original to target first, then merge retry data
                 if original_file.exists():
-                    # Copy original file to merged directory first
-                    shutil.copy2(original_file, merged_file)
+                    # Copy original file to target directory first
+                    shutil.copy2(original_file, target_file)
                     
                     try:
                         # Merge NetCDF files: update values where retry has data
-                        ds_merged = xr.open_dataset(merged_file, decode_times=False)
+                        ds_merged = xr.open_dataset(target_file, decode_times=False)
                         ds_ret = xr.open_dataset(retry_file, decode_times=False)
                         
                         # For each data variable, update values where retry has valid data
@@ -777,36 +809,37 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
                                     ds_merged[var_name].values[:] = merged_data
                         
                         # Write merged dataset
-                        temp_merge_file = merged_file.parent / f".{merged_file.name}.tmp"
+                        temp_merge_file = target_file.parent / f".{target_file.name}.tmp"
                         ds_merged.to_netcdf(temp_merge_file)
                         ds_merged.close()
                         ds_ret.close()
                         
-                        # Replace merged file
-                        merged_file.unlink()
-                        temp_merge_file.rename(merged_file)
+                        # Replace target file
+                        target_file.unlink()
+                        temp_merge_file.rename(target_file)
                         
                         output_files_merged += 1
                     except Exception as e:
                         print(f"Warning: Could not merge {retry_file.name}: {e}", file=sys.stderr)
                         # Fallback: just copy the retry file
-                        shutil.copy2(retry_file, merged_file)
+                        shutil.copy2(retry_file, target_file)
                         output_files_merged += 1
                 else:
-                    # File doesn't exist in original, just copy retry file to merged
-                    shutil.copy2(retry_file, merged_file)
+                    # File doesn't exist in original, just copy retry file to target
+                    shutil.copy2(retry_file, target_file)
                     output_files_merged += 1
             
             if output_files_merged > 0:
-                print(f"✓ Merged {output_files_merged} output file(s) to {merged_output_dir}")
+                print(f"✓ Merged {output_files_merged} output file(s) to {target_output_dir}")
         
-        # Update run-mask.nc in merged batch to reflect newly successful cells
+        # Update run-mask.nc in target batch to reflect newly successful cells
         # Set run=0 for cells that are now successful
         if original_mask_file.exists():
-            # Copy original mask to merged directory first
-            shutil.copy2(original_mask_file, merged_mask_file)
+            # Copy original mask to target directory first (if using merged dir)
+            if use_merged_dir:
+                shutil.copy2(original_mask_file, target_mask_file)
             
-            ds_mask = xr.open_dataset(merged_mask_file, decode_times=False)
+            ds_mask = xr.open_dataset(target_mask_file, decode_times=False)
             run_mask = ds_mask['run'].values.copy()
             
             # Set run=0 for newly successful cells
@@ -815,15 +848,15 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
             ds_mask_updated = ds_mask.copy()
             ds_mask_updated['run'].values[:] = run_mask
             
-            temp_mask_file = merged_mask_file.parent / f".{merged_mask_file.name}.tmp"
+            temp_mask_file = target_mask_file.parent / f".{target_mask_file.name}.tmp"
             ds_mask.close()
             ds_mask_updated.to_netcdf(temp_mask_file)
             ds_mask_updated.close()
             
-            merged_mask_file.unlink()
-            temp_mask_file.rename(merged_mask_file)
+            target_mask_file.unlink()
+            temp_mask_file.rename(target_mask_file)
             
-            print(f"✓ Updated run-mask.nc in {merged_mask_file}:")
+            print(f"✓ Updated run-mask.nc in {target_mask_file}:")
             print(f"  - Disabled {newly_successful_count} newly successful cells")
         
         stats = {
@@ -831,7 +864,8 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
             'already_successful': already_successful,
             'retry_failed': retry_failed,
             'output_files_merged': output_files_merged,
-            'merged_path': str(merged_path)
+            'use_merged_dir': use_merged_dir,
+            'merged_path': str(merged_path) if use_merged_dir else None
         }
         
         return True, stats
@@ -841,6 +875,66 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
         import traceback
         traceback.print_exc()
         return False, {}
+
+
+def submit_slurm_job(retry_path, dry_run=False):
+    """
+    Submit the slurm job for the retry batch.
+    
+    Args:
+        retry_path (Path): Path to the retry batch directory
+        dry_run (bool): If True, don't actually submit the job
+        
+    Returns:
+        tuple: (success, job_id) where success is bool and job_id is the job ID string or None
+    """
+    slurm_runner_file = retry_path / "slurm_runner.sh"
+    
+    if not slurm_runner_file.exists():
+        print(f"Error: slurm_runner.sh not found: {slurm_runner_file}", file=sys.stderr)
+        return False, None
+    
+    if dry_run:
+        print(f"[DRY RUN] Would submit slurm job:")
+        print(f"  cd {retry_path}")
+        print(f"  sbatch slurm_runner.sh")
+        return True, None
+    
+    try:
+        # Change to retry directory and submit the job
+        result = subprocess.run(
+            ['sbatch', 'slurm_runner.sh'],
+            cwd=retry_path,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        # Extract job ID from sbatch output (format: "Submitted batch job 12345")
+        job_id = None
+        if result.stdout:
+            match = re.search(r'(\d+)', result.stdout)
+            if match:
+                job_id = match.group(1)
+        
+        print(f"✓ Submitted slurm job")
+        if job_id:
+            print(f"  Job ID: {job_id}")
+        print(f"  Output: {result.stdout.strip()}")
+        
+        return True, job_id
+        
+    except subprocess.CalledProcessError as e:
+        print(f"Error submitting slurm job: {e}", file=sys.stderr)
+        if e.stderr:
+            print(f"  Error output: {e.stderr}", file=sys.stderr)
+        return False, None
+    except FileNotFoundError:
+        print(f"Error: 'sbatch' command not found. Is SLURM installed?", file=sys.stderr)
+        return False, None
+    except Exception as e:
+        print(f"Error submitting slurm job: {e}", file=sys.stderr)
+        return False, None
 
 
 def print_summary(batch_path, stats, retry_path, dry_run=False):
@@ -916,6 +1010,9 @@ Examples:
   # Verbose output with dry run
   %(prog)s ~/test_batches/batch_18 --dry-run --verbose
   
+  # Auto-submit slurm job after creating retry batch
+  %(prog)s ~/test_batches/batch_18 --submit
+  
   # Merge retry results back into original batch
   %(prog)s ~/test_batches/batch_18 --merge
 
@@ -956,6 +1053,11 @@ Description:
         action='store_true',
         help='Merge successful results from retry batch back into original batch'
     )
+    parser.add_argument(
+        '--submit',
+        action='store_true',
+        help='Automatically submit the slurm job after creating the retry batch'
+    )
     
     args = parser.parse_args()
     
@@ -981,7 +1083,7 @@ Description:
             print("Please create a retry batch first before merging results.", file=sys.stderr)
             sys.exit(1)
         
-        print("Merging retry results into merged directory...")
+        print("Merging retry results...")
         success, merge_stats = merge_retry_results(batch_path, retry_path, args.dry_run)
         
         if not success:
@@ -994,8 +1096,13 @@ Description:
         print(f"{'='*80}")
         print(f"Original batch: {batch_path}")
         print(f"Retry batch: {retry_path}")
-        if merge_stats and 'merged_path' in merge_stats:
-            print(f"Merged results directory: {merge_stats['merged_path']}")
+        if merge_stats:
+            use_merged_dir = merge_stats.get('use_merged_dir', False)
+            merged_path = merge_stats.get('merged_path')
+            if use_merged_dir and merged_path:
+                print(f"Merged results directory: {merged_path}")
+            else:
+                print(f"Merged results: Directly into original batch (all retried cells succeeded)")
         print()
         if merge_stats:
             print(f"Newly successful cells: {merge_stats.get('newly_successful', 0)}")
@@ -1009,9 +1116,13 @@ Description:
             print("  Output files have been merged regardless of success status.")
             print("  Review the merged results to verify data quality.")
             print()
-        if merge_stats and 'merged_path' in merge_stats:
-            print("⚠ Merged results are in the 'merged' directory.")
-            print("  Review the results before copying them to the original batch.")
+        if merge_stats:
+            use_merged_dir = merge_stats.get('use_merged_dir', False)
+            if use_merged_dir:
+                print("⚠ Merged results are in the 'merged' directory.")
+                print("  Review the results before copying them to the original batch.")
+            else:
+                print("✓ All retried cells succeeded - results merged directly into original batch.")
         print(f"{'='*80}")
         
         if args.dry_run:
@@ -1094,11 +1205,41 @@ Description:
     # Step 7: Print summary
     print_summary(batch_path, stats, retry_path, args.dry_run)
     
+    # Step 8: Submit slurm job if requested
+    job_id = None
+    if args.submit:
+        if args.dry_run:
+            print("\n[DRY RUN] Would submit slurm job (use --submit without --dry-run to actually submit)")
+        elif stats['failed_cells_to_retry'] == 0:
+            print("\n⚠ No failed cells to retry - skipping job submission")
+        else:
+            print()
+            print("Step 8: Submitting slurm job...")
+            success, job_id = submit_slurm_job(retry_path, args.dry_run)
+            if success and job_id:
+                print(f"\n✓ Job submitted successfully (Job ID: {job_id})")
+            elif success:
+                print(f"\n✓ Job submitted successfully")
+            else:
+                print("\n✗ Failed to submit slurm job", file=sys.stderr)
+    
     if args.dry_run:
         print("\nThis was a dry run. Use without --dry-run to create the retry batch.")
     else:
-        print("\nAfter the retry batch completes, use --merge to merge results back:")
-        print(f"  {sys.argv[0]} {batch_path} --merge")
+        if args.submit and job_id:
+            print("\nMonitor the job status with:")
+            print(f"  squeue -j {job_id}")
+        elif args.submit:
+            print("\nMonitor the job status with:")
+            print(f"  squeue -u $USER")
+        else:
+            print("\nAfter the retry batch completes, use --merge to merge results back:")
+            print(f"  {sys.argv[0]} {batch_path} --merge")
+            print("\nTo submit the retry batch now:")
+            print(f"  cd {retry_path}")
+            print(f"  sbatch slurm_runner.sh")
+            print("\nOr use --submit flag to auto-submit:")
+            print(f"  {sys.argv[0]} {batch_path} --submit")
 
 
 if __name__ == "__main__":
