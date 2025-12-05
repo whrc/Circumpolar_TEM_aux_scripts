@@ -319,6 +319,7 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition="
     - The config file path (-f) to use retry_path's config directory
     - The partition from "spot" to the specified partition (default: "dask") if present
     - The job name to append "-retry"
+    - Removes any walltime/time restrictions from the job script
     
     Args:
         retry_path (Path): Path to the retry batch directory
@@ -418,6 +419,36 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition="
         
         content = re.sub(partition_space_pattern, replace_partition_space, content)
         
+        # Remove walltime/time restrictions
+        # Match #SBATCH --time=... or #SBATCH -t ... formats
+        # Pattern matches: #SBATCH --time=HH:MM:SS, #SBATCH -t HH:MM:SS, etc.
+        time_patterns = [
+            r'#SBATCH\s+--time=[^\s\n]+',  # #SBATCH --time=HH:MM:SS
+            r'#SBATCH\s+-t\s+[^\s\n]+',     # #SBATCH -t HH:MM:SS
+            r'#SBATCH\s+--time\s+[^\s\n]+', # #SBATCH --time HH:MM:SS (space instead of =)
+        ]
+        
+        time_removed = False
+        for pattern in time_patterns:
+            if re.search(pattern, content):
+                content = re.sub(pattern, '', content)
+                time_removed = True
+        
+        # Also remove time restrictions from sbatch command line arguments
+        # Match --time=... or -t ... in the sbatch command
+        sbatch_time_patterns = [
+            r'\s--time=[^\s]+',  # --time=HH:MM:SS
+            r'\s-t\s+[^\s]+',    # -t HH:MM:SS
+        ]
+        
+        for pattern in sbatch_time_patterns:
+            if re.search(pattern, content):
+                content = re.sub(pattern, '', content)
+                time_removed = True
+        
+        # Clean up any double newlines that might result from removing lines
+        content = re.sub(r'\n\n+', '\n\n', content)
+        
         if content == original_content:
             print(f"Warning: No changes detected in slurm_runner.sh", file=sys.stderr)
             return True
@@ -432,6 +463,17 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition="
             print(f"  - Would replace log path (-o) with: {log_new}")
             if 'spot' in original_content:
                 print(f"  - Would change partition from 'spot' to '{partition}'")
+            # Check if time restrictions exist
+            time_patterns_check = [
+                r'#SBATCH\s+--time=',
+                r'#SBATCH\s+-t\s+',
+                r'#SBATCH\s+--time\s+',
+                r'\s--time=',
+                r'\s-t\s+',
+            ]
+            has_time_restriction = any(re.search(pattern, original_content) for pattern in time_patterns_check)
+            if has_time_restriction:
+                print(f"  - Would remove walltime/time restrictions")
             return True
         
         # Write the updated content
@@ -448,6 +490,8 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition="
         print(f"  - Replaced log path (-o) with: {log_new}")
         if 'spot' in original_content and partition in content:
             print(f"  - Changed partition from 'spot' to '{partition}'")
+        if time_removed:
+            print(f"  - Removed walltime/time restrictions")
         
         return True
         
@@ -1285,6 +1329,4 @@ Description:
 if __name__ == "__main__":
     main()
 
-
-# if there's wall time in the job script, remove it
 # merge the results regardless but if there's failure, report it with batch number and cell number
