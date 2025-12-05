@@ -193,7 +193,7 @@ def run_extract_failed_cells(batch_path, script_path=None, submit=False):
 
 def check_job_status(job_id):
     """
-    Check the status of a SLURM job.
+    Check the status of a SLURM job using sacct (can show both running and completed jobs).
     
     Args:
         job_id: SLURM job ID as string
@@ -202,56 +202,52 @@ def check_job_status(job_id):
         str: Job status ('RUNNING', 'PENDING', 'COMPLETED', 'FAILED', 'CANCELLED', 'UNKNOWN', or None on error)
     """
     try:
-        # First check if job is still in queue using squeue
+        # Use sacct -X to get only the main job (not array steps)
+        # This works for both running and completed jobs
+        # -n suppresses the header, -o State outputs only the State column
         result = subprocess.run(
-            ['squeue', '-j', str(job_id), '-h', '-o', '%T'],
+            ['sacct', '-X', '-j', str(job_id), '-n', '-o', 'State'],
             capture_output=True,
             text=True,
             check=True
         )
         
-        if result.stdout.strip():
-            status = result.stdout.strip().upper()
-            # Map common SLURM states
-            if status in ['RUNNING', 'R']:
-                return 'RUNNING'
-            elif status in ['PENDING', 'PD']:
-                return 'PENDING'
-            else:
-                return status
+        if not result.stdout.strip():
+            # No output - job might not exist yet or hasn't been recorded
+            return 'UNKNOWN'
         
-        # Job not in queue, check sacct for final status
-        result = subprocess.run(
-            ['sacct', '-j', str(job_id), '-n', '-o', 'State', '--parsable2'],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        # Parse the output - sacct returns whitespace-separated values, take the first line
+        # Output format: "   RUNNING " (with leading/trailing whitespace)
+        status_line = result.stdout.strip().split('\n')[0]
+        status = status_line.strip().upper()
         
-        if result.stdout.strip():
-            # Parse the output - sacct may return multiple lines, take the first
-            status_line = result.stdout.strip().split('\n')[0]
-            status = status_line.split('|')[0].upper()
-            
-            if 'COMPLETED' in status:
-                return 'COMPLETED'
-            elif 'FAILED' in status or 'CANCELLED' in status or 'TIMEOUT' in status:
-                if 'FAILED' in status:
-                    return 'FAILED'
-                elif 'CANCELLED' in status:
-                    return 'CANCELLED'
-                else:
-                    return 'FAILED'
-            else:
-                return status
+        # Map SLURM states to our status codes
+        if status in ['COMPLETED', 'CD']:
+            return 'COMPLETED'
+        elif status in ['RUNNING', 'R']:
+            return 'RUNNING'
+        elif status in ['PENDING', 'PD']:
+            return 'PENDING'
+        elif status in ['FAILED', 'F']:
+            return 'FAILED'
+        elif status in ['CANCELLED', 'CA']:
+            return 'CANCELLED'
+        elif status in ['TIMEOUT', 'TO']:
+            return 'FAILED'
+        elif status in ['NODE_FAIL', 'NF']:
+            return 'FAILED'
+        elif status in ['BOOT_FAIL', 'BF']:
+            return 'FAILED'
+        else:
+            # Unknown state, return as-is but log it
+            return status
         
-        return 'UNKNOWN'
-        
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
         # Command failed - job might not exist or SLURM commands unavailable
+        # Don't print error here as it might be normal (job not recorded yet)
         return None
     except FileNotFoundError:
-        print(f"Error: 'squeue' or 'sacct' command not found. Is SLURM installed?", file=sys.stderr)
+        print(f"Error: 'sacct' command not found. Is SLURM installed?", file=sys.stderr)
         return None
     except Exception as e:
         print(f"Error checking job status for {job_id}: {e}", file=sys.stderr)
