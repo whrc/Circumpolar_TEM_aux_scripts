@@ -310,20 +310,21 @@ def update_retry_run_mask(retry_path, run_status, run_mask_original, dry_run=Fal
         return False, 0, 0
 
 
-def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
+def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition="dask"):
     """
     Update the slurm_runner.sh file in the retry batch to use retry paths.
     
     Updates:
     - The log file path (-o) to use retry_path's logs directory
     - The config file path (-f) to use retry_path's config directory
-    - The partition from "spot" to "dask" if present
+    - The partition from "spot" to the specified partition (default: "dask") if present
     - The job name to append "-retry"
     
     Args:
         retry_path (Path): Path to the retry batch directory
         batch_path (Path): Path to the source batch directory (for reference)
         dry_run (bool): If True, don't actually modify files
+        partition (str): Partition name to use (default: "dask")
         
     Returns:
         bool: True if successful, False otherwise
@@ -395,7 +396,7 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
         
         content = re.sub(job_name_pattern, replace_job_name, content)
         
-        # Update partition from "spot" to "dask" if present
+        # Update partition from "spot" to specified partition if present
         # Match -p spot, --partition=spot, and --partition spot formats
         # Pattern matches: #SBATCH -p spot, #SBATCH --partition=spot, #SBATCH --partition spot
         partition_pattern = r'(#SBATCH\s+(?:-p\s+|--partition=))spot(\s|$)'
@@ -403,7 +404,7 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
         def replace_partition(match):
             prefix = match.group(1)  # #SBATCH -p or #SBATCH --partition=
             suffix = match.group(2)  # whitespace or end of line
-            return f"{prefix}dask{suffix}"
+            return f"{prefix}{partition}{suffix}"
         
         content = re.sub(partition_pattern, replace_partition, content)
         
@@ -413,7 +414,7 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
         def replace_partition_space(match):
             prefix = match.group(1)  # #SBATCH --partition 
             suffix = match.group(2)  # whitespace or end of line
-            return f"{prefix}dask{suffix}"
+            return f"{prefix}{partition}{suffix}"
         
         content = re.sub(partition_space_pattern, replace_partition_space, content)
         
@@ -430,7 +431,7 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
             log_new = str(retry_path_abs.parent / f"batch-{batch_num}-retry")
             print(f"  - Would replace log path (-o) with: {log_new}")
             if 'spot' in original_content:
-                print(f"  - Would change partition from 'spot' to 'dask'")
+                print(f"  - Would change partition from 'spot' to '{partition}'")
             return True
         
         # Write the updated content
@@ -445,8 +446,8 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
         print(f"✓ Updated slurm_runner.sh:")
         print(f"  - Replaced config path (-f) with: {config_new}")
         print(f"  - Replaced log path (-o) with: {log_new}")
-        if 'spot' in original_content and 'dask' in content:
-            print(f"  - Changed partition from 'spot' to 'dask'")
+        if 'spot' in original_content and partition in content:
+            print(f"  - Changed partition from 'spot' to '{partition}'")
         
         return True
         
@@ -1043,6 +1044,9 @@ Examples:
   # Auto-submit slurm job after creating retry batch
   %(prog)s ~/test_batches/batch_18 --submit
   
+  # Use a specific partition (default is 'dask')
+  %(prog)s ~/test_batches/batch_18 -p gpu
+  
   # Merge retry results back into original batch
   %(prog)s ~/test_batches/batch_18 --merge
 
@@ -1087,6 +1091,12 @@ Description:
         '--submit',
         action='store_true',
         help='Automatically submit the slurm job after creating the retry batch'
+    )
+    parser.add_argument(
+        '-p', '--partition',
+        type=str,
+        default='dask',
+        help='Partition to use when updating slurm_runner.sh (default: dask)'
     )
     
     args = parser.parse_args()
@@ -1216,7 +1226,7 @@ Description:
     
     # Step 5: Update slurm_runner.sh
     print("Step 5: Updating slurm_runner.sh...")
-    success = update_retry_slurm_runner(retry_path, batch_path, args.dry_run)
+    success = update_retry_slurm_runner(retry_path, batch_path, args.dry_run, args.partition)
     
     if not success:
         print("Warning: Failed to update slurm_runner.sh, but continuing...", file=sys.stderr)
@@ -1274,3 +1284,7 @@ Description:
 
 if __name__ == "__main__":
     main()
+
+
+# if there's wall time in the job script, remove it
+# merge the results regardless but if there's failure, report it with batch number and cell number
