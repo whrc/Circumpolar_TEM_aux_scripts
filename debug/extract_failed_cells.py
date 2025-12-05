@@ -676,7 +676,28 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
         already_successful = int(np.sum((original_status == 100) & (retry_status == 100)))
         
         # Count cells that failed in retry
-        retry_failed = int(np.sum((retry_status != 100) & (retry_status != 0) & ~np.isnan(retry_status)))
+        retry_failed_mask = (retry_status != 100) & (retry_status != 0) & ~np.isnan(retry_status)
+        retry_failed = int(np.sum(retry_failed_mask))
+        
+        # Get indices and status codes of failed cells for reporting
+        # Limit to first 50 cells to avoid overwhelming output
+        failed_cells_info = []
+        if retry_failed > 0:
+            failed_indices = np.argwhere(retry_failed_mask)
+            max_display = min(50, len(failed_indices))
+            for idx in failed_indices[:max_display]:
+                y_idx, x_idx = int(idx[0]), int(idx[1])
+                status_code = retry_status[y_idx, x_idx]
+                # Handle NaN (shouldn't happen due to mask, but just in case)
+                if np.isnan(status_code):
+                    status_code_str = 'NaN'
+                else:
+                    status_code_str = int(status_code)
+                failed_cells_info.append({
+                    'y': y_idx,
+                    'x': x_idx,
+                    'status': status_code_str
+                })
         
         # Determine if we should use merged directory or merge directly to original
         # If all retried cells succeeded, merge directly to original batch
@@ -720,12 +741,30 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
             
             ds_original.close()
             ds_retry.close()
+            # Get failed cells info for dry run too
+            failed_cells_info_dry = []
+            if retry_failed > 0:
+                failed_indices = np.argwhere(retry_failed_mask)
+                for idx in failed_indices[:10]:  # Limit to first 10 for dry run
+                    y_idx, x_idx = int(idx[0]), int(idx[1])
+                    status_code = retry_status[y_idx, x_idx]
+                    if np.isnan(status_code):
+                        status_code_str = 'NaN'
+                    else:
+                        status_code_str = int(status_code)
+                    failed_cells_info_dry.append({
+                        'y': y_idx,
+                        'x': x_idx,
+                        'status': status_code_str
+                    })
+            
             return True, {
                 'newly_successful': newly_successful_count,
                 'already_successful': already_successful,
                 'retry_failed': retry_failed,
                 'use_merged_dir': use_merged_dir,
-                'merged_path': str(merged_path) if use_merged_dir else None
+                'merged_path': str(merged_path) if use_merged_dir else None,
+                'failed_cells': failed_cells_info_dry
             }
         
         # Copy original run_status.nc to target directory first (if using merged dir)
@@ -940,7 +979,8 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
             'retry_failed': retry_failed,
             'output_files_merged': output_files_merged,
             'use_merged_dir': use_merged_dir,
-            'merged_path': str(merged_path) if use_merged_dir else None
+            'merged_path': str(merged_path) if use_merged_dir else None,
+            'failed_cells': failed_cells_info
         }
         
         return True, stats
@@ -950,6 +990,49 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
         import traceback
         traceback.print_exc()
         return False, {}
+
+
+def format_failed_cells_report(batch_path, failed_cells):
+    """
+    Format failed cells information into a readable report.
+    
+    Args:
+        batch_path (Path): Path to the batch directory
+        failed_cells (list): List of dicts with 'y', 'x', 'status' keys
+        
+    Returns:
+        str: Formatted report string
+    """
+    if not failed_cells:
+        return ""
+    
+    # Extract batch number from path
+    batch_name = batch_path.name
+    batch_match = re.search(r'batch[_-](\d+)', batch_name)
+    batch_num = batch_match.group(1) if batch_match else batch_name
+    
+    # Status code to name mapping
+    status_names = {
+        -100: "fail",
+        -5: "timeout",
+        -9999: "_FillValue",
+        'NaN': "not computed"
+    }
+    
+    lines = []
+    lines.append(f"\nFailed Cells Report:")
+    lines.append(f"Batch: {batch_name}")
+    lines.append(f"  {'Cell (Y, X)':<15} {'Status':<10} {'Status Name'}")
+    lines.append(f"  {'-'*13} {'-'*9} {'-'*12}")
+    
+    for cell in failed_cells:
+        y = cell['y']
+        x = cell['x']
+        status = cell['status']
+        status_name = status_names.get(status, "unknown")
+        lines.append(f"  ({y:>5}, {x:>5})   {str(status):<9} {status_name}")
+    
+    return "\n".join(lines)
 
 
 def submit_slurm_job(retry_path, dry_run=False):
@@ -1200,6 +1283,17 @@ Description:
             print("  Output files have been merged regardless of success status.")
             print("  Review the merged results to verify data quality.")
             print()
+            
+            # Display failed cells report
+            failed_cells = merge_stats.get('failed_cells', [])
+            if failed_cells:
+                report = format_failed_cells_report(batch_path, failed_cells)
+                if report:
+                    print(report)
+                    # If there are more failed cells than displayed, mention it
+                    if len(failed_cells) < retry_failed:
+                        print(f"  ... and {retry_failed - len(failed_cells)} more failed cells")
+                    print()
         if merge_stats:
             use_merged_dir = merge_stats.get('use_merged_dir', False)
             if use_merged_dir:
@@ -1328,5 +1422,3 @@ Description:
 
 if __name__ == "__main__":
     main()
-
-# merge the results regardless but if there's failure, report it with batch number and cell number

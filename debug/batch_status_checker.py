@@ -162,6 +162,12 @@ def run_extract_failed_cells(batch_path, script_path=None, submit=False, partiti
             cmd.append("--submit")
         result = subprocess.run(cmd, capture_output=True, text=True)
         
+        # Display output from extract_failed_cells.py (goes to console and log file)
+        if result.stdout:
+            print(result.stdout)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+        
         if result.returncode == 0:
             job_id = None
             if submit:
@@ -176,16 +182,9 @@ def run_extract_failed_cells(batch_path, script_path=None, submit=False, partiti
                     job_match = re.search(r'\b(\d{4,})\b', result.stdout)
                 if job_match:
                     job_id = job_match.group(1)
-                print(f"✓ Created and submitted retry batch for {batch_path}")
-                if job_id:
-                    print(f"  Job ID: {job_id}")
-            else:
-                print(f"✓ Created retry batch for {batch_path}")
             return True, job_id
         else:
             print(f"✗ Failed to create retry batch for {batch_path}", file=sys.stderr)
-            if result.stderr:
-                print(result.stderr, file=sys.stderr)
             return False, None
     except Exception as e:
         print(f"Error running extract_failed_cells.py for {batch_path}: {e}", file=sys.stderr)
@@ -284,13 +283,16 @@ def merge_retry_results(batch_path, script_path=None):
         cmd = [sys.executable, str(script_path), str(batch_path), "--merge"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         
+        # Display output from extract_failed_cells.py (goes to console and log file)
+        if result.stdout:
+            print(result.stdout)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+        
         if result.returncode == 0:
-            print(f"✓ Merged retry results for {batch_path}")
             return True
         else:
             print(f"✗ Failed to merge retry results for {batch_path}", file=sys.stderr)
-            if result.stderr:
-                print(result.stderr, file=sys.stderr)
             return False
     except Exception as e:
         print(f"Error merging retry results for {batch_path}: {e}", file=sys.stderr)
