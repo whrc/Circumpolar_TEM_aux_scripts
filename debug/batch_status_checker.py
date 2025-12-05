@@ -3,10 +3,28 @@ import os
 import sys
 import argparse
 import subprocess
+import re
+import time
 from pathlib import Path
 import xarray as xr
 import numpy as np
 from netCDF4 import Dataset
+from datetime import datetime
+
+class TeeOutput:
+    """Simple class that writes to both file and stdout/stderr."""
+    def __init__(self, file_handle, original_stream):
+        self.file = file_handle
+        self.original = original_stream
+    
+    def write(self, data):
+        self.original.write(data)
+        self.file.write(data)
+        self.file.flush()
+    
+    def flush(self):
+        self.original.flush()
+        self.file.flush()
 
 def count_run_ones(file_path):
     # Open the dataset
@@ -121,6 +139,134 @@ def run_extract_failed_cells(batch_path, script_path=None, submit=False):
         submit: If True, pass --submit flag to extract_failed_cells.py to auto-submit the job
         
     Returns:
+        tuple: (success, job_id) where success is bool and job_id is string or None
+    """
+    if script_path is None:
+        # Try to find the script in the same directory as this script (debug folder)
+        current_script_dir = Path(__file__).parent
+        script_path = current_script_dir / "extract_failed_cells.py"
+        
+        # If not found, try parent directory
+        if not script_path.exists():
+            script_path = current_script_dir.parent / "extract_failed_cells.py"
+    
+    if not os.path.exists(script_path):
+        print(f"Error: extract_failed_cells.py not found at {script_path}", file=sys.stderr)
+        return False, None
+    
+    try:
+        # Run the script with --force flag to overwrite existing retry directory
+        cmd = [sys.executable, str(script_path), str(batch_path), "--force"]
+        if submit:
+            cmd.append("--submit")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            job_id = None
+            if submit:
+                # Extract job ID from output
+                # Look for patterns like "Job ID: 12345" or "Submitted batch job 12345"
+                # Try multiple patterns to be robust
+                job_match = re.search(r'Job ID:\s*(\d+)', result.stdout)
+                if not job_match:
+                    job_match = re.search(r'Submitted batch job\s+(\d+)', result.stdout)
+                if not job_match:
+                    # Fallback: look for any standalone number that might be a job ID
+                    job_match = re.search(r'\b(\d{4,})\b', result.stdout)
+                if job_match:
+                    job_id = job_match.group(1)
+                print(f"✓ Created and submitted retry batch for {batch_path}")
+                if job_id:
+                    print(f"  Job ID: {job_id}")
+            else:
+                print(f"✓ Created retry batch for {batch_path}")
+            return True, job_id
+        else:
+            print(f"✗ Failed to create retry batch for {batch_path}", file=sys.stderr)
+            if result.stderr:
+                print(result.stderr, file=sys.stderr)
+            return False, None
+    except Exception as e:
+        print(f"Error running extract_failed_cells.py for {batch_path}: {e}", file=sys.stderr)
+        return False, None
+
+
+def check_job_status(job_id):
+    """
+    Check the status of a SLURM job.
+    
+    Args:
+        job_id: SLURM job ID as string
+        
+    Returns:
+        str: Job status ('RUNNING', 'PENDING', 'COMPLETED', 'FAILED', 'CANCELLED', 'UNKNOWN', or None on error)
+    """
+    try:
+        # First check if job is still in queue using squeue
+        result = subprocess.run(
+            ['squeue', '-j', str(job_id), '-h', '-o', '%T'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        if result.stdout.strip():
+            status = result.stdout.strip().upper()
+            # Map common SLURM states
+            if status in ['RUNNING', 'R']:
+                return 'RUNNING'
+            elif status in ['PENDING', 'PD']:
+                return 'PENDING'
+            else:
+                return status
+        
+        # Job not in queue, check sacct for final status
+        result = subprocess.run(
+            ['sacct', '-j', str(job_id), '-n', '-o', 'State', '--parsable2'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        if result.stdout.strip():
+            # Parse the output - sacct may return multiple lines, take the first
+            status_line = result.stdout.strip().split('\n')[0]
+            status = status_line.split('|')[0].upper()
+            
+            if 'COMPLETED' in status:
+                return 'COMPLETED'
+            elif 'FAILED' in status or 'CANCELLED' in status or 'TIMEOUT' in status:
+                if 'FAILED' in status:
+                    return 'FAILED'
+                elif 'CANCELLED' in status:
+                    return 'CANCELLED'
+                else:
+                    return 'FAILED'
+            else:
+                return status
+        
+        return 'UNKNOWN'
+        
+    except subprocess.CalledProcessError:
+        # Command failed - job might not exist or SLURM commands unavailable
+        return None
+    except FileNotFoundError:
+        print(f"Error: 'squeue' or 'sacct' command not found. Is SLURM installed?", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"Error checking job status for {job_id}: {e}", file=sys.stderr)
+        return None
+
+
+def merge_retry_results(batch_path, script_path=None):
+    """
+    Merge retry results back into original batch using extract_failed_cells.py --merge.
+    
+    Args:
+        batch_path: Path to the batch directory
+        script_path: Path to extract_failed_cells.py script (if None, tries to find it)
+        
+    Returns:
         bool: True if successful, False otherwise
     """
     if script_path is None:
@@ -137,25 +283,20 @@ def run_extract_failed_cells(batch_path, script_path=None, submit=False):
         return False
     
     try:
-        # Run the script with --force flag to overwrite existing retry directory
-        cmd = [sys.executable, str(script_path), str(batch_path), "--force"]
-        if submit:
-            cmd.append("--submit")
+        # Run the script with --merge flag
+        cmd = [sys.executable, str(script_path), str(batch_path), "--merge"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode == 0:
-            if submit:
-                print(f"✓ Created and submitted retry batch for {batch_path}")
-            else:
-                print(f"✓ Created retry batch for {batch_path}")
+            print(f"✓ Merged retry results for {batch_path}")
             return True
         else:
-            print(f"✗ Failed to create retry batch for {batch_path}", file=sys.stderr)
+            print(f"✗ Failed to merge retry results for {batch_path}", file=sys.stderr)
             if result.stderr:
                 print(result.stderr, file=sys.stderr)
             return False
     except Exception as e:
-        print(f"Error running extract_failed_cells.py for {batch_path}: {e}", file=sys.stderr)
+        print(f"Error merging retry results for {batch_path}: {e}", file=sys.stderr)
         return False
 
 
@@ -178,99 +319,196 @@ if __name__ == "__main__":
         action='store_true',
         help='Automatically submit slurm jobs for retry batches after creating them (requires --individual-retry)'
     )
+    parser.add_argument(
+        '--log-file',
+        type=str,
+        help='Path to log file where all output will be saved (also displayed on console)'
+    )
     
     args = parser.parse_args()
     
-    # Validate that --submit requires --individual-retry
-    if args.submit and not args.individual_retry:
-        print("Error: --submit flag requires --individual-retry flag", file=sys.stderr)
-        sys.exit(1)
+    # Set up logging to file if requested (simple redirect)
+    log_file_handle = None
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
     
-    base_folder = args.base_folder
-    batch_folders = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith("batch_")]
+    if args.log_file:
+        log_file_handle = open(args.log_file, 'a', buffering=1)
+        sys.stdout = TeeOutput(log_file_handle, original_stdout)
+        sys.stderr = TeeOutput(log_file_handle, original_stderr)
+        print(f"Logging to file: {args.log_file}")
+        print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("="*80)
     
-    # Sort batch folders to process in order
-    batch_folders.sort(key=lambda x: int(x.split('_')[1]) if '_' in x and x.split('_')[1].isdigit() else 999)
-    
-    n_batches = len(batch_folders)
-    total_m = 0  # Sum of completed gridcells
-    total_time = 0
-    count_n = 0
-    total_n = 0
-    unfinished_batches = []
-    
-    for batch_folder_name in batch_folders:
-        batch_folder = os.path.join(base_folder, batch_folder_name, "output")
-        nc_file_path = os.path.join(batch_folder, "run_status.nc")
+    try:
+        # Validate that --submit requires --individual-retry
+        if args.submit and not args.individual_retry:
+            print("Error: --submit flag requires --individual-retry flag", file=sys.stderr)
+            sys.exit(1)
+        
+        base_folder = args.base_folder
+        batch_folders = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith("batch_")]
+        
+        # Sort batch folders to process in order
+        batch_folders.sort(key=lambda x: int(x.split('_')[1]) if '_' in x and x.split('_')[1].isdigit() else 999)
+        
+        n_batches = len(batch_folders)
+        total_m = 0  # Sum of completed gridcells
+        total_time = 0
+        count_n = 0
+        total_n = 0
+        unfinished_batches = []
+        
+        for batch_folder_name in batch_folders:
+            batch_folder = os.path.join(base_folder, batch_folder_name, "output")
+            nc_file_path = os.path.join(batch_folder, "run_status.nc")
 
-        batch_input_folder = os.path.join(base_folder, batch_folder_name, "input")
-        mask_file_path = os.path.join(batch_input_folder, "run-mask.nc")
+            batch_input_folder = os.path.join(base_folder, batch_folder_name, "input")
+            mask_file_path = os.path.join(batch_input_folder, "run-mask.nc")
 
-        # Get number of cells that should run
-        if os.path.exists(mask_file_path):
-            n = count_run_ones(mask_file_path)
-        else:
-            print(f"{mask_file_path}: File does not exist")
-            n = 0
+            # Get number of cells that should run
+            if os.path.exists(mask_file_path):
+                n = count_run_ones(mask_file_path)
+            else:
+                print(f"{mask_file_path}: File does not exist")
+                n = 0
 
-        # Check run status
-        if os.path.exists(nc_file_path):
-            m, n1 = check_run_status(base_folder, nc_file_path, batch_folder_name)
-            total_m += m
-            
-            # Check if batch is finished (m != n means not finished)
-            if m != n:
-                # Batch is not finished
+            # Check run status
+            if os.path.exists(nc_file_path):
+                m, n1 = check_run_status(base_folder, nc_file_path, batch_folder_name)
+                total_m += m
+                
+                # Check if batch is finished (m != n means not finished)
+                if m != n:
+                    # Batch is not finished
+                    batch_path = os.path.join(base_folder, batch_folder_name)
+                    unfinished_batches.append(batch_path)
+                
+                mean_runtime = calculate_mean_runtime(nc_file_path)
+                if mean_runtime is not None:
+                    total_time += mean_runtime 
+                    count_n += 1
+            else:
+                print(f"{nc_file_path}: File does not exist")
+                # If run_status.nc doesn't exist, consider batch unfinished
                 batch_path = os.path.join(base_folder, batch_folder_name)
                 unfinished_batches.append(batch_path)
-            
-            mean_runtime = calculate_mean_runtime(nc_file_path)
-            if mean_runtime is not None:
-                total_time += mean_runtime 
-                count_n += 1
-        else:
-            print(f"{nc_file_path}: File does not exist")
-            # If run_status.nc doesn't exist, consider batch unfinished
-            batch_path = os.path.join(base_folder, batch_folder_name)
-            unfinished_batches.append(batch_path)
 
-        total_n = total_n + n
+            total_n = total_n + n
 
-    # Calculate and print the percentage of completion
-    if total_n > 0:
-        completion_percentage = (total_m / total_n) * 100
-        if count_n == 0:
-            print(f"\nOverall Completion: {completion_percentage:.2f}%")
+        # Calculate and print the percentage of completion
+        if total_n > 0:
+            completion_percentage = (total_m / total_n) * 100
+            if count_n == 0:
+                print(f"\nOverall Completion: {completion_percentage:.2f}%")
+            else:
+                average_run_time = total_time / count_n
+                print(f"\nOverall Completion: {completion_percentage:.2f}%")
+                print(f"\nMean total runtime: {average_run_time:.2f} seconds")
         else:
-            average_run_time = total_time / count_n
-            print(f"\nOverall Completion: {completion_percentage:.2f}%")
-            print(f"\nMean total runtime: {average_run_time:.2f} seconds")
-    else:
-        print("\nNo valid data found for processing.")
+            print("\nNo valid data found for processing.")
+        
+        # Handle individual retry flag
+        if args.individual_retry:
+            if unfinished_batches:
+                print(f"\n{'='*80}")
+                if args.submit:
+                    print(f"Creating and submitting retry batches for {len(unfinished_batches)} unfinished batch(es)...")
+                else:
+                    print(f"Creating retry batches for {len(unfinished_batches)} unfinished batch(es)...")
+                print(f"{'='*80}")
+                
+                # Track job IDs when submitting
+                job_tracking = {}  # {job_id: batch_path}
+                
+                for batch_path in unfinished_batches:
+                    print(f"\nProcessing: {batch_path}")
+                    success, job_id = run_extract_failed_cells(batch_path, submit=args.submit)
+                    
+                    if success and args.submit and job_id:
+                        job_tracking[job_id] = batch_path
+                
+                print(f"\n{'='*80}")
+                if args.submit:
+                    print(f"Finished creating and submitting {len(unfinished_batches)} unfinished batch(es)")
+                    if job_tracking:
+                        print(f"Tracking {len(job_tracking)} job(s) for monitoring...")
+                else:
+                    print(f"Finished processing {len(unfinished_batches)} unfinished batch(es)")
+                print(f"{'='*80}")
+                
+                # Monitor jobs and merge results when they complete
+                if args.submit and job_tracking:
+                    print(f"\n{'='*80}")
+                    print("Starting job monitoring (checking every 5 minutes)...")
+                    print(f"{'='*80}\n")
+                    
+                    poll_interval = 300  # 5 minutes in seconds
+                    completed_count = 0
+                    failed_count = 0
+                    
+                    while job_tracking:
+                        # Check status of all tracked jobs
+                        jobs_to_remove = []
+                        
+                        for job_id, batch_path in job_tracking.items():
+                            status = check_job_status(job_id)
+                            
+                            if status == 'COMPLETED':
+                                print(f"\n✓ Job {job_id} completed for {batch_path}")
+                                # Merge retry results
+                                if merge_retry_results(batch_path):
+                                    completed_count += 1
+                                else:
+                                    print(f"  Warning: Merge failed for {batch_path}")
+                                jobs_to_remove.append(job_id)
+                                
+                            elif status == 'FAILED':
+                                print(f"\n✗ Job {job_id} failed for {batch_path}")
+                                failed_count += 1
+                                jobs_to_remove.append(job_id)
+                                
+                            elif status == 'CANCELLED':
+                                print(f"\n⚠ Job {job_id} was cancelled for {batch_path}")
+                                failed_count += 1
+                                jobs_to_remove.append(job_id)
+                                
+                            elif status in ['RUNNING', 'PENDING']:
+                                # Job still active, keep tracking
+                                pass
+                                
+                            elif status is None:
+                                # Error checking status, but keep tracking for now
+                                print(f"  Warning: Could not check status for job {job_id}")
+                        
+                        # Remove completed/failed jobs from tracking
+                        for job_id in jobs_to_remove:
+                            del job_tracking[job_id]
+                        
+                        # If there are still jobs running, wait before next check
+                        if job_tracking:
+                            remaining_jobs = list(job_tracking.keys())
+                            print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Still monitoring {len(job_tracking)} job(s): {', '.join(remaining_jobs)}")
+                            print(f"Next check in {poll_interval // 60} minutes...")
+                            time.sleep(poll_interval)
+                    
+                    # Final summary
+                    print(f"\n{'='*80}")
+                    print("Job monitoring complete!")
+                    print(f"  Completed: {completed_count}")
+                    print(f"  Failed/Cancelled: {failed_count}")
+                    print(f"{'='*80}\n")
+                    
+            else:
+                print("\n✓ All batches are finished - no retry batches needed.")
     
-    # Handle individual retry flag
-    if args.individual_retry:
-        if unfinished_batches:
-            print(f"\n{'='*80}")
-            if args.submit:
-                print(f"Creating and submitting retry batches for {len(unfinished_batches)} unfinished batch(es)...")
-            else:
-                print(f"Creating retry batches for {len(unfinished_batches)} unfinished batch(es)...")
-            print(f"{'='*80}")
-            
-            for batch_path in unfinished_batches:
-                print(f"\nProcessing: {batch_path}")
-                run_extract_failed_cells(batch_path, submit=args.submit)
-            
-            print(f"\n{'='*80}")
-            if args.submit:
-                print(f"Finished creating and submitting {len(unfinished_batches)} unfinished batch(es)")
-            else:
-                print(f"Finished processing {len(unfinished_batches)} unfinished batch(es)")
-            print(f"{'='*80}")
-        else:
-            print("\n✓ All batches are finished - no retry batches needed.")
+    finally:
+        # Restore original stdout/stderr and close log file
+        if log_file_handle:
+            print(f"Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
+            log_file_handle.close()
 
 
 # add --dry-run flag to check if a tile will be retried. percentage > 70%, we'll submit. no job submission.
-# automate the job checking and merging like automation_script.py

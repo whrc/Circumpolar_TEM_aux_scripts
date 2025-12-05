@@ -317,6 +317,8 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
     Updates:
     - The log file path (-o) to use retry_path's logs directory
     - The config file path (-f) to use retry_path's config directory
+    - The partition from "spot" to "dask" if present
+    - The job name to append "-retry"
     
     Args:
         retry_path (Path): Path to the retry batch directory
@@ -393,6 +395,28 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
         
         content = re.sub(job_name_pattern, replace_job_name, content)
         
+        # Update partition from "spot" to "dask" if present
+        # Match -p spot, --partition=spot, and --partition spot formats
+        # Pattern matches: #SBATCH -p spot, #SBATCH --partition=spot, #SBATCH --partition spot
+        partition_pattern = r'(#SBATCH\s+(?:-p\s+|--partition=))spot(\s|$)'
+        
+        def replace_partition(match):
+            prefix = match.group(1)  # #SBATCH -p or #SBATCH --partition=
+            suffix = match.group(2)  # whitespace or end of line
+            return f"{prefix}dask{suffix}"
+        
+        content = re.sub(partition_pattern, replace_partition, content)
+        
+        # Also handle --partition spot format (with space instead of =)
+        partition_space_pattern = r'(#SBATCH\s+--partition\s+)spot(\s|$)'
+        
+        def replace_partition_space(match):
+            prefix = match.group(1)  # #SBATCH --partition 
+            suffix = match.group(2)  # whitespace or end of line
+            return f"{prefix}dask{suffix}"
+        
+        content = re.sub(partition_space_pattern, replace_partition_space, content)
+        
         if content == original_content:
             print(f"Warning: No changes detected in slurm_runner.sh", file=sys.stderr)
             return True
@@ -405,6 +429,8 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
             batch_num = batch_match.group(1) if batch_match else "retry"
             log_new = str(retry_path_abs.parent / f"batch-{batch_num}-retry")
             print(f"  - Would replace log path (-o) with: {log_new}")
+            if 'spot' in original_content:
+                print(f"  - Would change partition from 'spot' to 'dask'")
             return True
         
         # Write the updated content
@@ -419,6 +445,8 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
         print(f"✓ Updated slurm_runner.sh:")
         print(f"  - Replaced config path (-f) with: {config_new}")
         print(f"  - Replaced log path (-o) with: {log_new}")
+        if 'spot' in original_content and 'dask' in content:
+            print(f"  - Changed partition from 'spot' to 'dask'")
         
         return True
         
