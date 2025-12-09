@@ -685,8 +685,7 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
     This function:
     1. Merges run_status.nc: updates original batch with successful cells from retry
     2. Merges output files: copies/merges output NetCDF files from retry to original
-    3. Updates run-mask.nc in original batch to reflect newly successful cells
-    4. Creates failed_cells_report.txt if some cells still failed
+    3. Creates failed_cells_report.txt if some cells still failed
     
     Args:
         batch_path (Path): Path to the original batch directory
@@ -701,7 +700,6 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
         # Paths to files
         original_status_file = batch_path / "output" / "run_status.nc"
         retry_status_file = retry_path / "output" / "run_status.nc"
-        original_mask_file = batch_path / "input" / "run-mask.nc"
         original_output_dir = batch_path / "output"
         retry_output_dir = retry_path / "output"
         
@@ -709,7 +707,6 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
         target_output_dir = original_output_dir
         target_input_dir = batch_path / "input"
         target_status_file = original_status_file
-        target_mask_file = original_mask_file
         
         # Validate files exist
         if not retry_status_file.exists():
@@ -942,29 +939,6 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
             
             if output_files_merged > 0:
                 print(f"✓ Merged {output_files_merged} output file(s) to {target_output_dir}")
-        
-        # Update run-mask.nc in target batch to reflect newly successful cells
-        # Set run=0 for cells that are now successful
-        if original_mask_file.exists():
-            ds_mask = xr.open_dataset(target_mask_file, decode_times=False)
-            run_mask = ds_mask['run'].values.copy()
-            
-            # Set run=0 for newly successful cells
-            run_mask[newly_successful_mask] = 0
-            
-            ds_mask_updated = ds_mask.copy()
-            ds_mask_updated['run'].values[:] = run_mask
-            
-            temp_mask_file = target_mask_file.parent / f".{target_mask_file.name}.tmp"
-            ds_mask.close()
-            ds_mask_updated.to_netcdf(temp_mask_file)
-            ds_mask_updated.close()
-            
-            target_mask_file.unlink()
-            temp_mask_file.rename(target_mask_file)
-            
-            print(f"✓ Updated run-mask.nc in {target_mask_file}:")
-            print(f"  - Disabled {newly_successful_count} newly successful cells")
         
         # Create failed cells report if there are still failed cells
         report_file = None
