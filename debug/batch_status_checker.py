@@ -129,7 +129,7 @@ def check_run_status(base_folder, nc_file, batch_folder_name):
 
     return m, n
 
-def run_extract_failed_cells(batch_path, script_path=None, submit=False, partition="dask"):
+def run_extract_failed_cells(batch_path, script_path=None, submit=False, partition='dask'):
     """
     Run extract_failed_cells.py on a batch.
     
@@ -137,7 +137,7 @@ def run_extract_failed_cells(batch_path, script_path=None, submit=False, partiti
         batch_path: Path to the batch directory
         script_path: Path to extract_failed_cells.py script (if None, tries to find it)
         submit: If True, pass --submit flag to extract_failed_cells.py to auto-submit the job
-        partition: Partition name to use (default: "dask")
+        partition: SLURM partition to use for retry batch jobs (default: 'dask')
         
     Returns:
         tuple: (success, job_id) where success is bool and job_id is string or None
@@ -157,7 +157,7 @@ def run_extract_failed_cells(batch_path, script_path=None, submit=False, partiti
     
     try:
         # Run the script with --force flag to overwrite existing retry directory
-        cmd = [sys.executable, str(script_path), str(batch_path), "--force", "-p", partition]
+        cmd = [sys.executable, str(script_path), str(batch_path), "--force", "--partition", partition]
         if submit:
             cmd.append("--submit")
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -327,7 +327,7 @@ if __name__ == "__main__":
         '-p', '--partition',
         type=str,
         default='dask',
-        help='Partition to use when creating retry batches (default: dask)'
+        help='SLURM partition to use for retry batch jobs (default: dask)'
     )
     
     args = parser.parse_args()
@@ -517,3 +517,4 @@ if __name__ == "__main__":
 
 
 # add --dry-run flag to check if a tile will be retried. percentage > 70%, we'll submit. no job submission.
+# run a batch second time to see if it messes up the run_mask.nc file

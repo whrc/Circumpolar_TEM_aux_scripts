@@ -36,6 +36,7 @@ import re
 import json
 import subprocess
 from pathlib import Path
+from datetime import datetime
 import xarray as xr
 import numpy as np
 
@@ -310,14 +311,14 @@ def update_retry_run_mask(retry_path, run_status, run_mask_original, dry_run=Fal
         return False, 0, 0
 
 
-def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition="dask"):
+def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition='dask'):
     """
     Update the slurm_runner.sh file in the retry batch to use retry paths.
     
     Updates:
     - The log file path (-o) to use retry_path's logs directory
     - The config file path (-f) to use retry_path's config directory
-    - The partition from "spot" to the specified partition (default: "dask") if present
+    - The partition to the specified partition (replaces any existing partition)
     - The job name to append "-retry"
     - Removes any walltime/time restrictions from the job script
     
@@ -325,7 +326,7 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition="
         retry_path (Path): Path to the retry batch directory
         batch_path (Path): Path to the source batch directory (for reference)
         dry_run (bool): If True, don't actually modify files
-        partition (str): Partition name to use (default: "dask")
+        partition (str): SLURM partition to use (default: 'dask')
         
     Returns:
         bool: True if successful, False otherwise
@@ -397,57 +398,46 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition="
         
         content = re.sub(job_name_pattern, replace_job_name, content)
         
-        # Update partition from "spot" to specified partition if present
-        # Match -p spot, --partition=spot, and --partition spot formats
-        # Pattern matches: #SBATCH -p spot, #SBATCH --partition=spot, #SBATCH --partition spot
-        partition_pattern = r'(#SBATCH\s+(?:-p\s+|--partition=))spot(\s|$)'
+        # Update partition to the specified partition (replace any existing partition)
+        # Match -p PARTITION, --partition=PARTITION, and --partition PARTITION formats
+        # Pattern matches: #SBATCH -p PARTITION, #SBATCH --partition=PARTITION, #SBATCH --partition PARTITION
+        partition_found = False
+        
+        # Pattern 1: #SBATCH -p PARTITION or #SBATCH --partition=PARTITION
+        partition_pattern = r'(#SBATCH\s+(?:-p\s+|--partition=))([^\s]+)(\s|$)'
         
         def replace_partition(match):
+            nonlocal partition_found
             prefix = match.group(1)  # #SBATCH -p or #SBATCH --partition=
-            suffix = match.group(2)  # whitespace or end of line
+            old_partition = match.group(2)  # old partition name
+            suffix = match.group(3)  # whitespace or end of line
+            partition_found = True
             return f"{prefix}{partition}{suffix}"
         
         content = re.sub(partition_pattern, replace_partition, content)
         
-        # Also handle --partition spot format (with space instead of =)
-        partition_space_pattern = r'(#SBATCH\s+--partition\s+)spot(\s|$)'
+        # Pattern 2: #SBATCH --partition PARTITION (with space instead of =)
+        partition_space_pattern = r'(#SBATCH\s+--partition\s+)([^\s]+)(\s|$)'
         
         def replace_partition_space(match):
+            nonlocal partition_found
             prefix = match.group(1)  # #SBATCH --partition 
-            suffix = match.group(2)  # whitespace or end of line
+            old_partition = match.group(2)  # old partition name
+            suffix = match.group(3)  # whitespace or end of line
+            partition_found = True
             return f"{prefix}{partition}{suffix}"
         
         content = re.sub(partition_space_pattern, replace_partition_space, content)
         
-        # Remove walltime/time restrictions
-        # Match #SBATCH --time=... or #SBATCH -t ... formats
-        # Pattern matches: #SBATCH --time=HH:MM:SS, #SBATCH -t HH:MM:SS, etc.
-        time_patterns = [
-            r'#SBATCH\s+--time=[^\s\n]+',  # #SBATCH --time=HH:MM:SS
-            r'#SBATCH\s+-t\s+[^\s\n]+',     # #SBATCH -t HH:MM:SS
-            r'#SBATCH\s+--time\s+[^\s\n]+', # #SBATCH --time HH:MM:SS (space instead of =)
-        ]
-        
-        time_removed = False
-        for pattern in time_patterns:
-            if re.search(pattern, content):
-                content = re.sub(pattern, '', content)
-                time_removed = True
-        
-        # Also remove time restrictions from sbatch command line arguments
-        # Match --time=... or -t ... in the sbatch command
-        sbatch_time_patterns = [
-            r'\s--time=[^\s]+',  # --time=HH:MM:SS
-            r'\s-t\s+[^\s]+',    # -t HH:MM:SS
-        ]
-        
-        for pattern in sbatch_time_patterns:
-            if re.search(pattern, content):
-                content = re.sub(pattern, '', content)
-                time_removed = True
-        
-        # Clean up any double newlines that might result from removing lines
-        content = re.sub(r'\n\n+', '\n\n', content)
+        # If no partition directive exists, add one after the first #SBATCH line
+        if not partition_found:
+            # Find the first #SBATCH line and add partition after it
+            first_sbatch_match = re.search(r'(#SBATCH[^\n]+\n)', content)
+            if first_sbatch_match:
+                # Insert partition directive after the first #SBATCH line
+                insert_pos = first_sbatch_match.end()
+                content = content[:insert_pos] + f"#SBATCH -p {partition}\n" + content[insert_pos:]
+                partition_found = True
         
         if content == original_content:
             print(f"Warning: No changes detected in slurm_runner.sh", file=sys.stderr)
@@ -461,19 +451,13 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition="
             batch_num = batch_match.group(1) if batch_match else "retry"
             log_new = str(retry_path_abs.parent / f"batch-{batch_num}-retry")
             print(f"  - Would replace log path (-o) with: {log_new}")
-            if 'spot' in original_content:
-                print(f"  - Would change partition from 'spot' to '{partition}'")
-            # Check if time restrictions exist
-            time_patterns_check = [
-                r'#SBATCH\s+--time=',
-                r'#SBATCH\s+-t\s+',
-                r'#SBATCH\s+--time\s+',
-                r'\s--time=',
-                r'\s-t\s+',
-            ]
-            has_time_restriction = any(re.search(pattern, original_content) for pattern in time_patterns_check)
-            if has_time_restriction:
-                print(f"  - Would remove walltime/time restrictions")
+            # Check if partition exists in original content
+            partition_match = re.search(r'#SBATCH\s+(?:-p\s+|--partition[=\s]+)([^\s]+)', original_content)
+            if partition_match:
+                old_partition = partition_match.group(1)
+                print(f"  - Would change partition from '{old_partition}' to '{partition}'")
+            else:
+                print(f"  - Would add partition '{partition}'")
             return True
         
         # Write the updated content
@@ -488,10 +472,15 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition="
         print(f"✓ Updated slurm_runner.sh:")
         print(f"  - Replaced config path (-f) with: {config_new}")
         print(f"  - Replaced log path (-o) with: {log_new}")
-        if 'spot' in original_content and partition in content:
-            print(f"  - Changed partition from 'spot' to '{partition}'")
-        if time_removed:
-            print(f"  - Removed walltime/time restrictions")
+        # Check if partition was changed
+        partition_match_orig = re.search(r'#SBATCH\s+(?:-p\s+|--partition[=\s]+)([^\s]+)', original_content)
+        partition_match_new = re.search(r'#SBATCH\s+(?:-p\s+|--partition[=\s]+)([^\s]+)', content)
+        if partition_match_orig:
+            old_partition = partition_match_orig.group(1)
+            if partition_match_new and partition_match_new.group(1) == partition:
+                print(f"  - Changed partition from '{old_partition}' to '{partition}'")
+        elif partition_match_new and partition_match_new.group(1) == partition:
+            print(f"  - Added partition '{partition}'")
         
         return True
         
@@ -598,21 +587,106 @@ def update_retry_config(retry_path, batch_path, dry_run=False):
         return False
 
 
+def create_failed_cells_report(batch_path, retry_status, retry_failed_mask):
+    """
+    Create a concise report file listing cells that failed in the retry batch.
+    
+    Args:
+        batch_path (Path): Path to the batch directory where report will be created
+        retry_status (np.ndarray): Array of run_status values from retry batch
+        retry_failed_mask (np.ndarray): Boolean mask indicating which cells failed
+        
+    Returns:
+        Path: Path to the created report file, or None on error
+    """
+    try:
+        # Get indices of failed cells
+        failed_indices = np.argwhere(retry_failed_mask)
+        
+        if len(failed_indices) == 0:
+            return None
+        
+        # Get status codes for failed cells
+        failed_status_codes = retry_status[retry_failed_mask]
+        
+        # Create report file path
+        report_file = batch_path / "failed_cells_report.txt"
+        
+        # Status code descriptions
+        status_descriptions = {
+            -100: "fail",
+            -5: "timeout",
+            -9999: "_FillValue"
+        }
+        
+        # Group failed cells by status code for better readability
+        failed_by_status = {}
+        for idx, status_code in zip(failed_indices, failed_status_codes):
+            y, x = int(idx[0]), int(idx[1])
+            if np.isnan(status_code):
+                status_key = 'NaN'
+                status_desc = "not computed"
+            else:
+                status_key = int(status_code)
+                status_desc = status_descriptions.get(status_key, "unknown")
+            
+            if status_key not in failed_by_status:
+                failed_by_status[status_key] = {'desc': status_desc, 'cells': []}
+            failed_by_status[status_key]['cells'].append((y, x))
+        
+        # Write report file
+        with open(report_file, 'w') as f:
+            f.write("Failed Cells Report\n")
+            f.write("=" * 80 + "\n")
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Total failed cells: {len(failed_indices)}\n")
+            f.write("\n")
+            
+            # Write summary by status code
+            f.write("Summary by Status Code:\n")
+            f.write("-" * 80 + "\n")
+            for status_key in sorted(failed_by_status.keys(), key=lambda x: (isinstance(x, str), x)):
+                count = len(failed_by_status[status_key]['cells'])
+                desc = failed_by_status[status_key]['desc']
+                if isinstance(status_key, str):
+                    f.write(f"  Status {status_key} ({desc}): {count} cells\n")
+                else:
+                    f.write(f"  Status {status_key} ({desc}): {count} cells\n")
+            f.write("\n")
+            
+            # Write detailed list of failed cells
+            f.write("Failed Cells (Y, X coordinates):\n")
+            f.write("-" * 80 + "\n")
+            f.write(f"{'Y':>8}  {'X':>8}  {'Status':>10}  {'Description':<20}\n")
+            f.write("-" * 80 + "\n")
+            
+            for status_key in sorted(failed_by_status.keys(), key=lambda x: (isinstance(x, str), x)):
+                desc = failed_by_status[status_key]['desc']
+                for y, x in sorted(failed_by_status[status_key]['cells']):
+                    if isinstance(status_key, str):
+                        f.write(f"{y:>8}  {x:>8}  {status_key:>10}  {desc:<20}\n")
+                    else:
+                        f.write(f"{y:>8}  {x:>8}  {status_key:>10}  {desc:<20}\n")
+        
+        return report_file
+        
+    except Exception as e:
+        print(f"Error creating failed cells report: {e}", file=sys.stderr)
+        return None
+
+
 def merge_retry_results(batch_path, retry_path, dry_run=False):
     """
-    Merge results from retry batch into original batch or merged directory.
+    Merge results from retry batch directly into original batch.
     
-    This function merges successful results from the retry batch. If all retried
-    cells succeeded, it merges directly into the original batch. Otherwise, it
-    creates a 'merged' directory in the batch_path and merges results there.
+    This function merges successful results from the retry batch directly into
+    the original batch output folder. If some cells still fail after retry,
+    a report file is created listing the failed cells.
     
     This function:
-    1. Determines if merged directory is needed (only if some cells failed)
-    2. Creates a 'merged' directory structure (merged/output and merged/input) if needed
-    3. Copies original files to target directory (merged or original)
-    4. Merges run_status.nc: updates target batch with successful cells from retry
-    5. Merges output files: copies/merges output NetCDF files from retry to target
-    6. Updates run-mask.nc in target batch to reflect newly successful cells
+    1. Merges run_status.nc: updates original batch with successful cells from retry
+    2. Merges output files: copies/merges output NetCDF files from retry to original
+    3. Creates failed_cells_report.txt if some cells still failed
     
     Args:
         batch_path (Path): Path to the original batch directory
@@ -621,25 +695,19 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
         
     Returns:
         tuple: (success, stats_dict) where stats_dict contains merge statistics
-               including 'merged_path' (None if merged directly to original) and
-               'use_merged_dir' (bool indicating if merged directory was used)
+               including 'report_file' (path to report if created, None otherwise)
     """
     try:
-        # Create merged directory structure
-        merged_path = batch_path / "merged"
-        merged_output_dir = merged_path / "output"
-        merged_input_dir = merged_path / "input"
-        
         # Paths to files
         original_status_file = batch_path / "output" / "run_status.nc"
         retry_status_file = retry_path / "output" / "run_status.nc"
-        original_mask_file = batch_path / "input" / "run-mask.nc"
         original_output_dir = batch_path / "output"
         retry_output_dir = retry_path / "output"
         
-        # Merged file paths
-        merged_status_file = merged_output_dir / "run_status.nc"
-        merged_mask_file = merged_input_dir / "run-mask.nc"
+        # Target paths (always original batch directories)
+        target_output_dir = original_output_dir
+        target_input_dir = batch_path / "input"
+        target_status_file = original_status_file
         
         # Validate files exist
         if not retry_status_file.exists():
@@ -699,37 +767,11 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
                     'status': status_code_str
                 })
         
-        # Determine if we should use merged directory or merge directly to original
-        # If all retried cells succeeded, merge directly to original batch
-        # Otherwise, create merged directory
-        use_merged_dir = retry_failed > 0
-        
-        # Set target paths based on whether we're using merged directory
-        if use_merged_dir:
-            target_output_dir = merged_output_dir
-            target_input_dir = merged_input_dir
-            target_status_file = merged_status_file
-            target_mask_file = merged_mask_file
-        else:
-            # Merge directly to original batch
-            target_output_dir = original_output_dir
-            target_input_dir = batch_path / "input"
-            target_status_file = original_status_file
-            target_mask_file = original_mask_file
-        
-        # Create merged directory structure only if needed and not in dry run
-        if use_merged_dir and not dry_run:
-            merged_output_dir.mkdir(parents=True, exist_ok=True)
-            merged_input_dir.mkdir(parents=True, exist_ok=True)
-            print(f"Created merged directory: {merged_path}")
-        elif not use_merged_dir and not dry_run:
-            print(f"All retried cells succeeded - merging directly into original batch")
+        # Create mask for cells that failed in retry
+        retry_failed_mask = (retry_status != 100) & (retry_status != 0) & ~np.isnan(retry_status)
         
         if dry_run:
-            if use_merged_dir:
-                print(f"[DRY RUN] Would merge retry results into: {merged_path}")
-            else:
-                print(f"[DRY RUN] Would merge retry results directly into original batch: {batch_path}")
+            print(f"[DRY RUN] Would merge retry results directly into original batch: {batch_path}")
             print(f"  - Would update {newly_successful_count} newly successful cells")
             print(f"  - {already_successful} cells were already successful")
             print(f"  - {retry_failed} cells still failed in retry")
@@ -738,6 +780,9 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
             if retry_output_dir.exists():
                 output_files = list(retry_output_dir.glob("*.nc"))
                 print(f"  - Would merge {len(output_files)} output NetCDF file(s)")
+            
+            if retry_failed > 0:
+                print(f"  - Would create failed cells report: {batch_path / 'failed_cells_report.txt'}")
             
             ds_original.close()
             ds_retry.close()
@@ -762,14 +807,8 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
                 'newly_successful': newly_successful_count,
                 'already_successful': already_successful,
                 'retry_failed': retry_failed,
-                'use_merged_dir': use_merged_dir,
-                'merged_path': str(merged_path) if use_merged_dir else None,
-                'failed_cells': failed_cells_info_dry
+                'report_file': None
             }
-        
-        # Copy original run_status.nc to target directory first (if using merged dir)
-        if use_merged_dir:
-            shutil.copy2(original_status_file, target_status_file)
         
         # Update merged run_status with successful cells from retry
         merged_status = original_status.copy()
@@ -849,13 +888,7 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
                 target_file = target_output_dir / retry_file.name
                 
                 # If file exists in original, we need to merge the data
-                # Copy original to target first (only if using merged directory), then merge retry data
                 if original_file.exists():
-                    # Only copy if we're using a merged directory (target != original)
-                    if use_merged_dir:
-                        # Copy original file to target directory first
-                        shutil.copy2(original_file, target_file)
-                    
                     try:
                         # Merge NetCDF files: update values where retry has data
                         ds_merged = xr.open_dataset(target_file, decode_times=False)
@@ -946,41 +979,21 @@ def merge_retry_results(batch_path, retry_path, dry_run=False):
             if output_files_merged > 0:
                 print(f"✓ Merged {output_files_merged} output file(s) to {target_output_dir}")
         
-        # Update run-mask.nc in target batch to reflect newly successful cells
-        # Set run=0 for cells that are now successful
-        if original_mask_file.exists():
-            # Copy original mask to target directory first (if using merged dir)
-            if use_merged_dir:
-                shutil.copy2(original_mask_file, target_mask_file)
-            
-            ds_mask = xr.open_dataset(target_mask_file, decode_times=False)
-            run_mask = ds_mask['run'].values.copy()
-            
-            # Set run=0 for newly successful cells
-            run_mask[newly_successful_mask] = 0
-            
-            ds_mask_updated = ds_mask.copy()
-            ds_mask_updated['run'].values[:] = run_mask
-            
-            temp_mask_file = target_mask_file.parent / f".{target_mask_file.name}.tmp"
-            ds_mask.close()
-            ds_mask_updated.to_netcdf(temp_mask_file)
-            ds_mask_updated.close()
-            
-            target_mask_file.unlink()
-            temp_mask_file.rename(target_mask_file)
-            
-            print(f"✓ Updated run-mask.nc in {target_mask_file}:")
-            print(f"  - Disabled {newly_successful_count} newly successful cells")
+        # Create failed cells report if there are still failed cells
+        report_file = None
+        if retry_failed > 0:
+            report_file = create_failed_cells_report(batch_path, retry_status, retry_failed_mask)
+            if report_file:
+                print(f"✓ Created failed cells report: {report_file}")
+            else:
+                print(f"⚠ Warning: Failed to create failed cells report", file=sys.stderr)
         
         stats = {
             'newly_successful': newly_successful_count,
             'already_successful': already_successful,
             'retry_failed': retry_failed,
             'output_files_merged': output_files_merged,
-            'use_merged_dir': use_merged_dir,
-            'merged_path': str(merged_path) if use_merged_dir else None,
-            'failed_cells': failed_cells_info
+            'report_file': str(report_file) if report_file else None
         }
         
         return True, stats
@@ -1223,7 +1236,7 @@ Description:
         '-p', '--partition',
         type=str,
         default='dask',
-        help='Partition to use when updating slurm_runner.sh (default: dask)'
+        help='SLURM partition to use for retry batch jobs (default: dask)'
     )
     
     args = parser.parse_args()
@@ -1263,13 +1276,7 @@ Description:
         print(f"{'='*80}")
         print(f"Original batch: {batch_path}")
         print(f"Retry batch: {retry_path}")
-        if merge_stats:
-            use_merged_dir = merge_stats.get('use_merged_dir', False)
-            merged_path = merge_stats.get('merged_path')
-            if use_merged_dir and merged_path:
-                print(f"Merged results directory: {merged_path}")
-            else:
-                print(f"Merged results: Directly into original batch (all retried cells succeeded)")
+        print(f"Merged results: Directly into original batch")
         print()
         if merge_stats:
             print(f"Newly successful cells: {merge_stats.get('newly_successful', 0)}")
@@ -1277,28 +1284,19 @@ Description:
             retry_failed = merge_stats.get('retry_failed', 0)
             print(f"Still failed cells: {retry_failed}")
             print(f"Output files merged: {merge_stats.get('output_files_merged', 0)}")
+            report_file = merge_stats.get('report_file')
+            if report_file:
+                print(f"Failed cells report: {report_file}")
         print()
-        if merge_stats and retry_failed > 0:
-            print(f"⚠ Warning: {retry_failed} cells still failed in the retry batch.")
-            print("  Output files have been merged regardless of success status.")
-            print("  Review the merged results to verify data quality.")
-            print()
-            
-            # Display failed cells report
-            failed_cells = merge_stats.get('failed_cells', [])
-            if failed_cells:
-                report = format_failed_cells_report(batch_path, failed_cells)
-                if report:
-                    print(report)
-                    # If there are more failed cells than displayed, mention it
-                    if len(failed_cells) < retry_failed:
-                        print(f"  ... and {retry_failed - len(failed_cells)} more failed cells")
-                    print()
         if merge_stats:
-            use_merged_dir = merge_stats.get('use_merged_dir', False)
-            if use_merged_dir:
-                print("⚠ Merged results are in the 'merged' directory.")
-                print("  Review the results before copying them to the original batch.")
+            retry_failed = merge_stats.get('retry_failed', 0)
+            if retry_failed > 0:
+                print(f"⚠ Warning: {retry_failed} cells still failed in the retry batch.")
+                print("  Output files have been merged regardless of success status.")
+                report_file = merge_stats.get('report_file')
+                if report_file:
+                    print(f"  See {report_file} for details on failed cells.")
+                print("  Review the merged results to verify data quality.")
             else:
                 print("✓ All retried cells succeeded - results merged directly into original batch.")
         print(f"{'='*80}")
