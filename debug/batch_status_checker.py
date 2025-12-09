@@ -515,3 +515,4 @@ if __name__ == "__main__":
 
 
 # add --dry-run flag to check if a tile will be retried. percentage > 70%, we'll submit. no job submission.
+# run a batch second time to see if it messes up the run_mask.nc file
