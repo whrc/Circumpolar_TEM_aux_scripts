@@ -129,7 +129,7 @@ def check_run_status(base_folder, nc_file, batch_folder_name):
 
     return m, n
 
-def run_extract_failed_cells(batch_path, script_path=None, submit=False):
+def run_extract_failed_cells(batch_path, script_path=None, submit=False, partition='dask'):
     """
     Run extract_failed_cells.py on a batch.
     
@@ -137,6 +137,7 @@ def run_extract_failed_cells(batch_path, script_path=None, submit=False):
         batch_path: Path to the batch directory
         script_path: Path to extract_failed_cells.py script (if None, tries to find it)
         submit: If True, pass --submit flag to extract_failed_cells.py to auto-submit the job
+        partition: SLURM partition to use for retry batch jobs (default: 'dask')
         
     Returns:
         tuple: (success, job_id) where success is bool and job_id is string or None
@@ -156,7 +157,7 @@ def run_extract_failed_cells(batch_path, script_path=None, submit=False):
     
     try:
         # Run the script with --force flag to overwrite existing retry directory
-        cmd = [sys.executable, str(script_path), str(batch_path), "--force"]
+        cmd = [sys.executable, str(script_path), str(batch_path), "--force", "--partition", partition]
         if submit:
             cmd.append("--submit")
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -320,6 +321,12 @@ if __name__ == "__main__":
         type=str,
         help='Path to log file where all output will be saved (also displayed on console)'
     )
+    parser.add_argument(
+        '-p', '--partition',
+        type=str,
+        default='dask',
+        help='SLURM partition to use for retry batch jobs (default: dask)'
+    )
     
     args = parser.parse_args()
     
@@ -419,7 +426,7 @@ if __name__ == "__main__":
                 
                 for batch_path in unfinished_batches:
                     print(f"\nProcessing: {batch_path}")
-                    success, job_id = run_extract_failed_cells(batch_path, submit=args.submit)
+                    success, job_id = run_extract_failed_cells(batch_path, submit=args.submit, partition=args.partition)
                     
                     if success and args.submit and job_id:
                         job_tracking[job_id] = batch_path

@@ -310,20 +310,21 @@ def update_retry_run_mask(retry_path, run_status, run_mask_original, dry_run=Fal
         return False, 0, 0
 
 
-def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
+def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition='dask'):
     """
     Update the slurm_runner.sh file in the retry batch to use retry paths.
     
     Updates:
     - The log file path (-o) to use retry_path's logs directory
     - The config file path (-f) to use retry_path's config directory
-    - The partition from "spot" to "dask" if present
+    - The partition to the specified partition (replaces any existing partition)
     - The job name to append "-retry"
     
     Args:
         retry_path (Path): Path to the retry batch directory
         batch_path (Path): Path to the source batch directory (for reference)
         dry_run (bool): If True, don't actually modify files
+        partition (str): SLURM partition to use (default: 'dask')
         
     Returns:
         bool: True if successful, False otherwise
@@ -395,27 +396,46 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
         
         content = re.sub(job_name_pattern, replace_job_name, content)
         
-        # Update partition from "spot" to "dask" if present
-        # Match -p spot, --partition=spot, and --partition spot formats
-        # Pattern matches: #SBATCH -p spot, #SBATCH --partition=spot, #SBATCH --partition spot
-        partition_pattern = r'(#SBATCH\s+(?:-p\s+|--partition=))spot(\s|$)'
+        # Update partition to the specified partition (replace any existing partition)
+        # Match -p PARTITION, --partition=PARTITION, and --partition PARTITION formats
+        # Pattern matches: #SBATCH -p PARTITION, #SBATCH --partition=PARTITION, #SBATCH --partition PARTITION
+        partition_found = False
+        
+        # Pattern 1: #SBATCH -p PARTITION or #SBATCH --partition=PARTITION
+        partition_pattern = r'(#SBATCH\s+(?:-p\s+|--partition=))([^\s]+)(\s|$)'
         
         def replace_partition(match):
+            nonlocal partition_found
             prefix = match.group(1)  # #SBATCH -p or #SBATCH --partition=
-            suffix = match.group(2)  # whitespace or end of line
-            return f"{prefix}dask{suffix}"
+            old_partition = match.group(2)  # old partition name
+            suffix = match.group(3)  # whitespace or end of line
+            partition_found = True
+            return f"{prefix}{partition}{suffix}"
         
         content = re.sub(partition_pattern, replace_partition, content)
         
-        # Also handle --partition spot format (with space instead of =)
-        partition_space_pattern = r'(#SBATCH\s+--partition\s+)spot(\s|$)'
+        # Pattern 2: #SBATCH --partition PARTITION (with space instead of =)
+        partition_space_pattern = r'(#SBATCH\s+--partition\s+)([^\s]+)(\s|$)'
         
         def replace_partition_space(match):
+            nonlocal partition_found
             prefix = match.group(1)  # #SBATCH --partition 
-            suffix = match.group(2)  # whitespace or end of line
-            return f"{prefix}dask{suffix}"
+            old_partition = match.group(2)  # old partition name
+            suffix = match.group(3)  # whitespace or end of line
+            partition_found = True
+            return f"{prefix}{partition}{suffix}"
         
         content = re.sub(partition_space_pattern, replace_partition_space, content)
+        
+        # If no partition directive exists, add one after the first #SBATCH line
+        if not partition_found:
+            # Find the first #SBATCH line and add partition after it
+            first_sbatch_match = re.search(r'(#SBATCH[^\n]+\n)', content)
+            if first_sbatch_match:
+                # Insert partition directive after the first #SBATCH line
+                insert_pos = first_sbatch_match.end()
+                content = content[:insert_pos] + f"#SBATCH -p {partition}\n" + content[insert_pos:]
+                partition_found = True
         
         if content == original_content:
             print(f"Warning: No changes detected in slurm_runner.sh", file=sys.stderr)
@@ -429,8 +449,13 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
             batch_num = batch_match.group(1) if batch_match else "retry"
             log_new = str(retry_path_abs.parent / f"batch-{batch_num}-retry")
             print(f"  - Would replace log path (-o) with: {log_new}")
-            if 'spot' in original_content:
-                print(f"  - Would change partition from 'spot' to 'dask'")
+            # Check if partition exists in original content
+            partition_match = re.search(r'#SBATCH\s+(?:-p\s+|--partition[=\s]+)([^\s]+)', original_content)
+            if partition_match:
+                old_partition = partition_match.group(1)
+                print(f"  - Would change partition from '{old_partition}' to '{partition}'")
+            else:
+                print(f"  - Would add partition '{partition}'")
             return True
         
         # Write the updated content
@@ -445,8 +470,15 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False):
         print(f"✓ Updated slurm_runner.sh:")
         print(f"  - Replaced config path (-f) with: {config_new}")
         print(f"  - Replaced log path (-o) with: {log_new}")
-        if 'spot' in original_content and 'dask' in content:
-            print(f"  - Changed partition from 'spot' to 'dask'")
+        # Check if partition was changed
+        partition_match_orig = re.search(r'#SBATCH\s+(?:-p\s+|--partition[=\s]+)([^\s]+)', original_content)
+        partition_match_new = re.search(r'#SBATCH\s+(?:-p\s+|--partition[=\s]+)([^\s]+)', content)
+        if partition_match_orig:
+            old_partition = partition_match_orig.group(1)
+            if partition_match_new and partition_match_new.group(1) == partition:
+                print(f"  - Changed partition from '{old_partition}' to '{partition}'")
+        elif partition_match_new and partition_match_new.group(1) == partition:
+            print(f"  - Added partition '{partition}'")
         
         return True
         
@@ -1088,6 +1120,12 @@ Description:
         action='store_true',
         help='Automatically submit the slurm job after creating the retry batch'
     )
+    parser.add_argument(
+        '-p', '--partition',
+        type=str,
+        default='dask',
+        help='SLURM partition to use for retry batch jobs (default: dask)'
+    )
     
     args = parser.parse_args()
     
@@ -1216,7 +1254,7 @@ Description:
     
     # Step 5: Update slurm_runner.sh
     print("Step 5: Updating slurm_runner.sh...")
-    success = update_retry_slurm_runner(retry_path, batch_path, args.dry_run)
+    success = update_retry_slurm_runner(retry_path, batch_path, args.dry_run, args.partition)
     
     if not success:
         print("Warning: Failed to update slurm_runner.sh, but continuing...", file=sys.stderr)
