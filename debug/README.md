@@ -2,6 +2,70 @@
 
 This directory contains scripts for debuging TEM (Terrestrial Ecosystem Model) output tiles from Google Cloud Storage.
 
+## Scripts
+
+### fix_tile.py
+
+Check tile completion status for SSP scenarios (ssp_1_2_6 and ssp_5_8_5) and automatically fix failed tiles.
+
+**Usage:**
+```bash
+# Check tiles from a file
+python debug/fix_tile.py tiles/file_name.txt
+
+# Check a single tile
+python debug/fix_tile.py --tile H7_V8
+
+# Check and automatically fix failed tiles
+python debug/fix_tile.py --tile H7_V8 --fix
+```
+
+**Options:**
+- `--tile TILE, -t TILE`: Single tile name to check (e.g., H7_V8)
+- `--fix`: Automatically pull and retry failed tiles
+- `--submit`: Automatically submit SLURM jobs for retry batches (requires --fix)
+- `--bucket-path PATH`: GCS bucket path (default: circumpolar_model_output/recent2)
+- `--partition, -p PARTITION`: SLURM partition for retry jobs (default: spot)
+
+**What it does:**
+1. Downloads run_status.nc and run-mask.nc from GCS bucket
+2. Calculates completion percentage for ssp_1_2_6 and ssp_5_8_5 scenarios
+3. Reports "PASSED" if completion >99%, otherwise "FAILED"
+4. If `--fix` is enabled and tiles fail:
+   - Checks if `{tile_name}_sc` or `{tile_name}` directory already exists
+   - If exists, skips pull and uses existing directory (saves time/bandwidth)
+   - If not, pulls the tile from GCS bucket to `{tile_name}_sc` directory
+   - Runs `batch_status_checker.py --individual-retry` for each failed scenario
+   - Creates retry batches for incomplete runs
+   - If `--submit` is enabled: automatically submits SLURM jobs for retry batches
+   - Logs output to `LOG/{tile_name}_debug_{scenario}.log`
+
+**Examples:**
+```bash
+# Check a single tile
+python debug/fix_tile.py --tile H8_V16
+
+# Check and fix a single tile (create retry batches only)
+python debug/fix_tile.py --tile H7_V8 --fix
+
+# Check, fix, and auto-submit SLURM jobs
+python debug/fix_tile.py --tile H7_V8 --fix --submit
+
+# Check completion for test tiles from file
+python debug/fix_tile.py tiles/test_tile.txt
+
+# Check, fix, and submit all failed tiles with custom partition
+python debug/fix_tile.py tiles/unfinished_ak_can.txt --fix --submit --partition dask
+
+# Use custom bucket path
+python debug/fix_tile.py --tile H7_V8 --fix --submit --bucket-path circumpolar_model_output/test
+```
+
+**Requirements:**
+- Python 3.x with xarray, numpy, netCDF4
+- Google Cloud SDK with gsutil installed and configured
+- Access to GCS bucket: `gs://circumpolar_model_output/`
+
 ## Instructions
 
 The debuging process:
