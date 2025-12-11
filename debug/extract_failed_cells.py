@@ -311,7 +311,7 @@ def update_retry_run_mask(retry_path, run_status, run_mask_original, dry_run=Fal
         return False, 0, 0
 
 
-def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition='dask'):
+def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition='dask', nowalltime=False):
     """
     Update the slurm_runner.sh file in the retry batch to use retry paths.
     
@@ -320,13 +320,14 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition='
     - The config file path (-f) to use retry_path's config directory
     - The partition to the specified partition (replaces any existing partition)
     - The job name to append "-retry"
-    - Removes any walltime/time restrictions from the job script
+    - Optionally removes #SBATCH --time lines if nowalltime is True
     
     Args:
         retry_path (Path): Path to the retry batch directory
         batch_path (Path): Path to the source batch directory (for reference)
         dry_run (bool): If True, don't actually modify files
         partition (str): SLURM partition to use (default: 'dask')
+        nowalltime (bool): If True, remove #SBATCH --time lines (default: False)
         
     Returns:
         bool: True if successful, False otherwise
@@ -439,6 +440,16 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition='
                 content = content[:insert_pos] + f"#SBATCH -p {partition}\n" + content[insert_pos:]
                 partition_found = True
         
+        # Remove #SBATCH --time lines if nowalltime is True
+        time_lines_removed = 0
+        if nowalltime:
+            # Pattern matches: #SBATCH --time=..., #SBATCH --time ..., #SBATCH -t ...
+            # Match the entire line including newline
+            time_pattern = r'^#SBATCH\s+(?:--time[=\s]+|-t\s+)[^\n]*\n'
+            time_matches = re.findall(time_pattern, content, re.MULTILINE)
+            time_lines_removed = len(time_matches)
+            content = re.sub(time_pattern, '', content, flags=re.MULTILINE)
+        
         if content == original_content:
             print(f"Warning: No changes detected in slurm_runner.sh", file=sys.stderr)
             return True
@@ -458,6 +469,12 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition='
                 print(f"  - Would change partition from '{old_partition}' to '{partition}'")
             else:
                 print(f"  - Would add partition '{partition}'")
+            # Check for time lines if nowalltime
+            if nowalltime:
+                time_pattern = r'^#SBATCH\s+(?:--time[=\s]+|-t\s+)[^\n]*\n'
+                time_matches = re.findall(time_pattern, original_content, re.MULTILINE)
+                if time_matches:
+                    print(f"  - Would remove {len(time_matches)} #SBATCH --time line(s)")
             return True
         
         # Write the updated content
@@ -481,6 +498,9 @@ def update_retry_slurm_runner(retry_path, batch_path, dry_run=False, partition='
                 print(f"  - Changed partition from '{old_partition}' to '{partition}'")
         elif partition_match_new and partition_match_new.group(1) == partition:
             print(f"  - Added partition '{partition}'")
+        # Report time lines removed if nowalltime
+        if nowalltime and time_lines_removed > 0:
+            print(f"  - Removed {time_lines_removed} #SBATCH --time line(s)")
         
         return True
         
@@ -1238,6 +1258,11 @@ Description:
         default='dask',
         help='SLURM partition to use for retry batch jobs (default: dask)'
     )
+    parser.add_argument(
+        '--nowalltime',
+        action='store_true',
+        help='Remove #SBATCH --time lines from retry batch slurm script'
+    )
     
     args = parser.parse_args()
     
@@ -1362,7 +1387,7 @@ Description:
     
     # Step 5: Update slurm_runner.sh
     print("Step 5: Updating slurm_runner.sh...")
-    success = update_retry_slurm_runner(retry_path, batch_path, args.dry_run, args.partition)
+    success = update_retry_slurm_runner(retry_path, batch_path, args.dry_run, args.partition, args.nowalltime)
     
     if not success:
         print("Warning: Failed to update slurm_runner.sh, but continuing...", file=sys.stderr)

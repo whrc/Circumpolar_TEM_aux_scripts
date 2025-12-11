@@ -66,6 +66,25 @@ python debug/fix_tile.py --tile H7_V8 --fix --submit --bucket-path circumpolar_m
 - Google Cloud SDK with gsutil installed and configured
 - Access to GCS bucket: `gs://circumpolar_model_output/`
 
+## Scripts
+
+### batch_status_checker.py
+
+Check run status of batches and optionally create retry batches for unfinished ones.
+
+**Options:**
+- `--individual-retry`: Create retry batches for all unfinished batches
+- `--submit`: Automatically submit SLURM jobs for retry batches (requires --individual-retry)
+- `--log-file PATH`: Save output to log file
+- `-p, --partition PARTITION`: SLURM partition to use (default: dask)
+- `--nowalltime`: Remove #SBATCH --time lines from retry batch slurm scripts
+
+**Example:**
+```bash
+# Check batch completion and create retry batches without time limits
+python debug/batch_status_checker.py /path/to/scenario --individual-retry --nowalltime --submit -p spot
+```
+
 ## Instructions
 
 The debuging process:
