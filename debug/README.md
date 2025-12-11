@@ -26,6 +26,7 @@ python debug/fix_tile.py --tile H7_V8 --fix
 - `--submit`: Automatically submit SLURM jobs for retry batches (requires --fix)
 - `--bucket-path PATH`: GCS bucket path (default: circumpolar_model_output/recent2)
 - `--partition, -p PARTITION`: SLURM partition for retry jobs (default: spot)
+- `--nowalltime`: Remove #SBATCH --time lines from retry batch slurm scripts
 
 **What it does:**
 1. Downloads run_status.nc and run-mask.nc from GCS bucket
@@ -48,14 +49,14 @@ python debug/fix_tile.py --tile H8_V16
 # Check and fix a single tile (create retry batches only)
 python debug/fix_tile.py --tile H7_V8 --fix
 
-# Check, fix, and auto-submit SLURM jobs
-python debug/fix_tile.py --tile H7_V8 --fix --submit
+# Check, fix, and auto-submit SLURM jobs without walltime limits
+python debug/fix_tile.py --tile H7_V8 --fix --submit --nowalltime
 
 # Check completion for test tiles from file
 python debug/fix_tile.py tiles/test_tile.txt
 
-# Check, fix, and submit all failed tiles with custom partition
-python debug/fix_tile.py tiles/unfinished_ak_can.txt --fix --submit --partition dask
+# Check, fix, and submit all failed tiles with custom partition and no walltime
+python debug/fix_tile.py tiles/unfinished_ak_can.txt --fix --submit --partition dask --nowalltime
 
 # Use custom bucket path
 python debug/fix_tile.py --tile H7_V8 --fix --submit --bucket-path circumpolar_model_output/test

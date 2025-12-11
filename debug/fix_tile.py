@@ -227,7 +227,7 @@ def pull_tile_from_bucket(bucket_path, tile_name, working_dir=None):
         return None
 
 
-def run_batch_retry(tile_dir, scenario, partition='spot', submit=False):
+def run_batch_retry(tile_dir, scenario, partition='spot', submit=False, nowalltime=False):
     """
     Run batch_status_checker.py with --individual-retry for a specific scenario.
     
@@ -236,6 +236,7 @@ def run_batch_retry(tile_dir, scenario, partition='spot', submit=False):
         scenario: Scenario name (full name with _split suffix)
         partition: SLURM partition to use (default: 'spot')
         submit: If True, automatically submit SLURM jobs (default: False)
+        nowalltime: If True, remove #SBATCH --time lines from retry scripts (default: False)
         
     Returns:
         bool: True if successful, False otherwise
@@ -279,6 +280,10 @@ def run_batch_retry(tile_dir, scenario, partition='spot', submit=False):
         if submit:
             cmd.insert(4, '--submit')  # Insert after --individual-retry
         
+        # Add --nowalltime flag if enabled
+        if nowalltime:
+            cmd.insert(4, '--nowalltime')  # Insert after --individual-retry
+        
         print(f"Command: {' '.join(cmd)}")
         
         result = subprocess.run(
@@ -305,7 +310,7 @@ def run_batch_retry(tile_dir, scenario, partition='spot', submit=False):
         return False
 
 
-def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partition='spot', submit=False):
+def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partition='spot', submit=False, nowalltime=False):
     """Check completion status for a tile across both SSP scenarios and optionally fix failures.
     
     Args:
@@ -314,6 +319,7 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
         bucket_path: GCS bucket path (required)
         partition: SLURM partition to use for retries
         submit: If True, automatically submit SLURM jobs
+        nowalltime: If True, remove #SBATCH --time lines from retry scripts
         
     Returns:
         Dictionary with scenario completion status
@@ -379,7 +385,7 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
         # Run batch retry for each failed scenario
         for short_name, full_name in failed_scenarios:
             print(f"\n--- Fixing scenario: {short_name} ({full_name}) ---")
-            success = run_batch_retry(tile_dir, full_name, partition, submit)
+            success = run_batch_retry(tile_dir, full_name, partition, submit, nowalltime)
             
             if success:
                 print(f"✓ Successfully initiated retry for {short_name}")
@@ -448,6 +454,12 @@ Examples:
         help='SLURM partition to use for retry jobs (default: spot)'
     )
     
+    parser.add_argument(
+        '--nowalltime',
+        action='store_true',
+        help='Remove #SBATCH --time lines from retry batch slurm scripts'
+    )
+    
     args = parser.parse_args()
     
     # Validate that --submit requires --fix
@@ -473,6 +485,8 @@ Examples:
         print(f"Partition: {args.partition}")
         if args.submit:
             print(f"Auto-submit enabled - SLURM jobs will be submitted automatically")
+        if args.nowalltime:
+            print(f"No walltime mode - #SBATCH --time lines will be removed from retry scripts")
     
     # Process each tile
     for tile in tiles:
@@ -481,7 +495,8 @@ Examples:
             fix_failed=args.fix,
             bucket_path=args.bucket_path,
             partition=args.partition,
-            submit=args.submit
+            submit=args.submit,
+            nowalltime=args.nowalltime
         )
     
     print(f"\n{'='*80}")
