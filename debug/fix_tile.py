@@ -267,22 +267,25 @@ def run_batch_retry(tile_dir, scenario, partition='spot', submit=False, nowallti
     print(f"Log file: {log_file}")
     
     try:
+        # Build command with optional flags inserted correctly
         cmd = [
             sys.executable,
             str(batch_checker_path),
-            '--individual-retry',
+            '--individual-retry'
+        ]
+        
+        # Add optional flags right after --individual-retry (before other arguments)
+        if submit:
+            cmd.append('--submit')
+        if nowalltime:
+            cmd.append('--nowalltime')
+        
+        # Add remaining arguments with their values
+        cmd.extend([
             '--log-file', log_file,
             '-p', partition,
             scenario_path
-        ]
-        
-        # Add --submit flag if enabled
-        if submit:
-            cmd.insert(4, '--submit')  # Insert after --individual-retry
-        
-        # Add --nowalltime flag if enabled
-        if nowalltime:
-            cmd.insert(4, '--nowalltime')  # Insert after --individual-retry
+        ])
         
         print(f"Command: {' '.join(cmd)}")
         
