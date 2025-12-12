@@ -458,22 +458,61 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
     failed_scenarios = []
     results = {}
     
+    # Check if tile directory exists locally for early completion check
+    working_dir = os.getcwd()
+    tile_dir_check = os.path.join(working_dir, f"{tile_name}_sc")
+    tile_dir_alt_check = os.path.join(working_dir, tile_name)
+    local_tile_dir = None
+    
+    if os.path.exists(tile_dir_check):
+        local_tile_dir = tile_dir_check
+    elif os.path.exists(tile_dir_alt_check):
+        local_tile_dir = tile_dir_alt_check
+    
     # Check each scenario
     for short_name, full_name in SCENARIO_MAP.items():
         status = "FAILED"
         completion_str = "N/A"
+        bucket_completion = None
         
+        # First check bucket completion
         if full_name in completions and completions[full_name] is not None:
-            completion = completions[full_name]
-            completion_str = f"{completion:.2f}%"
+            bucket_completion = completions[full_name]
+            completion_str = f"{bucket_completion:.2f}%"
             
-            if completion > THRESHOLD:
+            if bucket_completion > THRESHOLD:
                 status = "PASSED"
             else:
-                failed_scenarios.append((short_name, full_name))
+                # Bucket shows failed, but check local if directory exists
+                if local_tile_dir and fix_failed:
+                    local_completion = check_local_scenario_completion(local_tile_dir, full_name)
+                    if local_completion is not None and local_completion > THRESHOLD:
+                        # Local is complete, update status
+                        status = "PASSED"
+                        completion_str = f"{local_completion:.2f}% (local)"
+                    else:
+                        # Still failed, add to retry list
+                        failed_scenarios.append((short_name, full_name))
+                else:
+                    # No local directory or fix not enabled, add to failed
+                    failed_scenarios.append((short_name, full_name))
         else:
-            completion_str = "Not found/Error"
-            failed_scenarios.append((short_name, full_name))
+            # Not found in bucket, check local if exists
+            if local_tile_dir and fix_failed:
+                local_completion = check_local_scenario_completion(local_tile_dir, full_name)
+                if local_completion is not None:
+                    if local_completion > THRESHOLD:
+                        status = "PASSED"
+                        completion_str = f"{local_completion:.2f}% (local)"
+                    else:
+                        completion_str = f"{local_completion:.2f}% (local)"
+                        failed_scenarios.append((short_name, full_name))
+                else:
+                    completion_str = "Not found/Error"
+                    failed_scenarios.append((short_name, full_name))
+            else:
+                completion_str = "Not found/Error"
+                failed_scenarios.append((short_name, full_name))
         
         print(f"  {short_name:15s}: {completion_str:15s} [{status}]")
         results[short_name] = {'status': status, 'completion': completion_str}
@@ -484,18 +523,10 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
         print(f"Attempting to fix {len(failed_scenarios)} failed scenario(s)...")
         print(f"{'='*80}")
         
-        # Check if tile directory already exists (tile_name or tile_name_sc)
-        working_dir = os.getcwd()
-        tile_dir = os.path.join(working_dir, f"{tile_name}_sc")
-        tile_dir_alt = os.path.join(working_dir, tile_name)
-        
-        if os.path.exists(tile_dir):
-            print(f"✓ Tile directory already exists: {tile_dir}")
-            print(f"  Skipping pull, using existing directory")
-        elif os.path.exists(tile_dir_alt):
-            print(f"✓ Tile directory already exists: {tile_dir_alt}")
-            print(f"  Skipping pull, using existing directory")
-            tile_dir = tile_dir_alt
+        # Use local_tile_dir if it exists, otherwise pull
+        if local_tile_dir:
+            tile_dir = local_tile_dir
+            print(f"✓ Using existing tile directory: {tile_dir}")
         else:
             # Pull the tile
             print(f"Pulling tile from bucket...")
@@ -505,30 +536,8 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
                 print(f"✗ Failed to pull tile, cannot proceed with fix", file=sys.stderr)
                 return results
         
-        # Check local completion for scenarios in existing directory
-        # Filter out scenarios that are already complete locally
-        scenarios_to_fix = []
+        # Run batch retry for each failed scenario
         for short_name, full_name in failed_scenarios:
-            local_completion = check_local_scenario_completion(tile_dir, full_name)
-            
-            if local_completion is not None and local_completion > THRESHOLD:
-                print(f"\n--- Scenario {short_name} ({full_name}) ---")
-                print(f"  Local completion: {local_completion:.2f}%")
-                print(f"  ✓ Already complete locally, skipping retry")
-            else:
-                if local_completion is not None:
-                    print(f"\n--- Scenario {short_name} ({full_name}) ---")
-                    print(f"  Local completion: {local_completion:.2f}%")
-                    print(f"  Needs retry")
-                scenarios_to_fix.append((short_name, full_name))
-        
-        # Update failed_scenarios to only include those that need fixing
-        if not scenarios_to_fix:
-            print(f"\n✓ All scenarios are already complete locally, nothing to fix!")
-            return results
-        
-        # Run batch retry for each scenario that needs fixing
-        for short_name, full_name in scenarios_to_fix:
             print(f"\n--- Fixing scenario: {short_name} ({full_name}) ---")
             success = run_batch_retry(tile_dir, full_name, partition, submit, nowalltime)
             

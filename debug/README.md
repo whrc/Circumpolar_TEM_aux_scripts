@@ -30,14 +30,17 @@ python debug/fix_tile.py --tile H7_V8 --fix
 - `--nowalltime`: Remove #SBATCH --time lines from retry batch slurm scripts
 
 **What it does:**
-1. Downloads run_status.nc and run-mask.nc from GCS bucket
-2. Calculates completion percentage for ssp_1_2_6 and ssp_5_8_5 scenarios
-3. Reports "PASSED" if completion >99%, otherwise "FAILED"
-4. If `--fix` is enabled and tiles fail:
-   - Checks if `{tile_name}_sc` or `{tile_name}` directory already exists
-   - If exists, skips pull and uses existing directory (saves time/bandwidth)
-   - **Checks local scenario completion** - if scenario is already >99% complete locally, skips retry
-   - If not exists, pulls the tile from GCS bucket to `{tile_name}_sc` directory
+1. Downloads run_status.nc and run-mask.nc from GCS bucket to check remote completion
+2. **Checks if tile directory exists locally** (`{tile_name}_sc` or `{tile_name}`)
+3. For each scenario (ssp_1_2_6 and ssp_5_8_5):
+   - If bucket shows >99% → Reports "PASSED"
+   - If bucket shows ≤99% or not found:
+     - If local directory exists and `--fix` enabled: checks local completion
+     - If local >99% → Reports "PASSED (local)" and **skips retry**
+     - If local ≤99% or not found → Reports "FAILED" and adds to retry queue
+4. If `--fix` is enabled and scenarios truly failed:
+   - Uses existing local directory if available (saves bandwidth)
+   - Otherwise pulls tile from GCS bucket to `{tile_name}_sc` directory
    - Runs `batch_status_checker.py --individual-retry` only for scenarios that need fixing
    - Creates retry batches for incomplete runs
    - If `--submit` is enabled: automatically submits SLURM jobs for retry batches
