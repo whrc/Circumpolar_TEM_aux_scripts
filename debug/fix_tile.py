@@ -486,12 +486,17 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
                 # Bucket shows failed, but check local if directory exists
                 if local_tile_dir and fix_failed:
                     local_completion = check_local_scenario_completion(local_tile_dir, full_name)
-                    if local_completion is not None and local_completion > THRESHOLD:
-                        # Local is complete, update status
-                        status = "PASSED"
+                    if local_completion is not None:
+                        # Update completion_str to show local value
                         completion_str = f"{local_completion:.2f}% (local)"
+                        if local_completion > THRESHOLD:
+                            # Local is complete, update status
+                            status = "PASSED"
+                        else:
+                            # Still failed, add to retry list
+                            failed_scenarios.append((short_name, full_name))
                     else:
-                        # Still failed, add to retry list
+                        # Local check failed, keep bucket value and add to retry
                         failed_scenarios.append((short_name, full_name))
                 else:
                     # No local directory or fix not enabled, add to failed
