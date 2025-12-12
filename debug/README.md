@@ -24,6 +24,7 @@ python debug/fix_tile.py --tile H7_V8 --fix
 - `--tile TILE, -t TILE`: Single tile name to check (e.g., H7_V8)
 - `--fix`: Automatically pull and retry failed tiles
 - `--submit`: Automatically submit SLURM jobs for retry batches (requires --fix)
+- `--sync`: Sync results back to bucket after retry (requires --fix)
 - `--bucket-path PATH`: GCS bucket path (default: circumpolar_model_output/recent2)
 - `--partition, -p PARTITION`: SLURM partition for retry jobs (default: spot)
 - `--nowalltime`: Remove #SBATCH --time lines from retry batch slurm scripts
@@ -39,6 +40,7 @@ python debug/fix_tile.py --tile H7_V8 --fix
    - Runs `batch_status_checker.py --individual-retry` for each failed scenario
    - Creates retry batches for incomplete runs
    - If `--submit` is enabled: automatically submits SLURM jobs for retry batches
+   - If `--sync` is enabled: syncs results back to bucket after retry using `sync_tile_to_bucket.py`
    - Logs output to `LOG/{tile_name}_debug_{scenario}.log`
 
 **Examples:**
@@ -52,11 +54,14 @@ python debug/fix_tile.py --tile H7_V8 --fix
 # Check, fix, and auto-submit SLURM jobs without walltime limits
 python debug/fix_tile.py --tile H7_V8 --fix --submit --nowalltime
 
+# Check, fix, submit, and sync results back to bucket
+python debug/fix_tile.py --tile H7_V8 --fix --submit --sync
+
 # Check completion for test tiles from file
 python debug/fix_tile.py tiles/test_tile.txt
 
-# Check, fix, and submit all failed tiles with custom partition and no walltime
-python debug/fix_tile.py tiles/unfinished_ak_can.txt --fix --submit --partition dask --nowalltime
+# Check, fix, submit, and sync all failed tiles with custom partition and no walltime
+python debug/fix_tile.py tiles/unfinished_ak_can.txt --fix --submit --sync --partition dask --nowalltime
 
 # Use custom bucket path
 python debug/fix_tile.py --tile H7_V8 --fix --submit --bucket-path circumpolar_model_output/test

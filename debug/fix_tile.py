@@ -313,7 +313,69 @@ def run_batch_retry(tile_dir, scenario, partition='spot', submit=False, nowallti
         return False
 
 
-def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partition='spot', submit=False, nowalltime=False):
+def sync_tile_to_bucket(tile_name, scenario, working_dir):
+    """
+    Run sync_tile_to_bucket.py to sync results back to the bucket.
+    
+    Args:
+        tile_name: Name of the tile (e.g., H7_V8)
+        scenario: Scenario name WITHOUT _split suffix (e.g., ssp1_2_6_mri_esm2_0)
+        working_dir: Working directory (current directory where tile was processed)
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    # Find sync_tile_to_bucket.py (should be in parent directory)
+    current_script_dir = Path(__file__).parent
+    sync_script_path = current_script_dir.parent / "sync_tile_to_bucket.py"
+    
+    if not sync_script_path.exists():
+        print(f"✗ sync_tile_to_bucket.py not found at {sync_script_path}", file=sys.stderr)
+        return False
+    
+    print(f"\nSyncing results to bucket for {scenario}...")
+    
+    try:
+        cmd = [
+            sys.executable,
+            str(sync_script_path),
+            tile_name,
+            '--trim',
+            '--merge',
+            '--sync',
+            '--all_merged',
+            '--force-merge',
+            scenario,
+            working_dir
+        ]
+        
+        print(f"Command: {' '.join(cmd)}")
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True
+        )
+        
+        # Print output
+        if result.stdout:
+            print(result.stdout)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+        
+        if result.returncode == 0:
+            print(f"✓ Sync completed for {scenario}")
+            return True
+        else:
+            print(f"✗ Sync failed for {scenario}", file=sys.stderr)
+            return False
+            
+    except Exception as e:
+        print(f"✗ Error running sync: {e}", file=sys.stderr)
+        return False
+
+
+def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partition='spot', submit=False, nowalltime=False, sync=False):
     """Check completion status for a tile across both SSP scenarios and optionally fix failures.
     
     Args:
@@ -323,6 +385,7 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
         partition: SLURM partition to use for retries
         submit: If True, automatically submit SLURM jobs
         nowalltime: If True, remove #SBATCH --time lines from retry scripts
+        sync: If True, sync results back to bucket after retry
         
     Returns:
         Dictionary with scenario completion status
@@ -392,6 +455,16 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
             
             if success:
                 print(f"✓ Successfully initiated retry for {short_name}")
+                
+                # If sync is enabled, sync results back to bucket
+                if sync:
+                    # Remove _split suffix from scenario name for sync
+                    scenario_for_sync = full_name.replace('_split', '')
+                    working_dir = os.getcwd()
+                    
+                    sync_success = sync_tile_to_bucket(tile_name, scenario_for_sync, working_dir)
+                    if not sync_success:
+                        print(f"⚠ Warning: Sync failed for {short_name}, but continuing...")
             else:
                 print(f"✗ Failed to initiate retry for {short_name}")
     
@@ -413,11 +486,14 @@ Examples:
   # Check, fix, and auto-submit SLURM jobs
   python debug/fix_tile.py --tile H7_V8 --fix --submit
   
+  # Check, fix, submit, and sync results back to bucket
+  python debug/fix_tile.py --tile H7_V8 --fix --submit --sync
+  
   # Check tiles from a file
   python debug/fix_tile.py tiles/unfinished_ak_can.txt
   
-  # Check, fix, and submit with custom partition
-  python debug/fix_tile.py tiles/test_tile.txt --fix --submit --partition dask
+  # Check, fix, submit, and sync with custom partition and no walltime
+  python debug/fix_tile.py tiles/test_tile.txt --fix --submit --sync --partition dask --nowalltime
         """
     )
     
@@ -463,11 +539,22 @@ Examples:
         help='Remove #SBATCH --time lines from retry batch slurm scripts'
     )
     
+    parser.add_argument(
+        '--sync',
+        action='store_true',
+        help='Sync results back to bucket after retry (requires --fix)'
+    )
+    
     args = parser.parse_args()
     
     # Validate that --submit requires --fix
     if args.submit and not args.fix:
         print("Error: --submit flag requires --fix flag", file=sys.stderr)
+        sys.exit(1)
+    
+    # Validate that --sync requires --fix
+    if args.sync and not args.fix:
+        print("Error: --sync flag requires --fix flag", file=sys.stderr)
         sys.exit(1)
     
     # Get tile list - either from file or single tile
@@ -490,6 +577,8 @@ Examples:
             print(f"Auto-submit enabled - SLURM jobs will be submitted automatically")
         if args.nowalltime:
             print(f"No walltime mode - #SBATCH --time lines will be removed from retry scripts")
+        if args.sync:
+            print(f"Sync mode enabled - results will be synced back to bucket after retry")
     
     # Process each tile
     for tile in tiles:
@@ -499,7 +588,8 @@ Examples:
             bucket_path=args.bucket_path,
             partition=args.partition,
             submit=args.submit,
-            nowalltime=args.nowalltime
+            nowalltime=args.nowalltime,
+            sync=args.sync
         )
     
     print(f"\n{'='*80}")
