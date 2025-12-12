@@ -29,7 +29,9 @@ python debug/fix_tile.py --tile H7_V8 --fix
 - `--tile TILE, -t TILE`: Single tile name to check (e.g., H7_V8)
 - `--fix`: Automatically pull and retry failed tiles
 - `--submit`: Automatically submit SLURM jobs for retry batches (requires --fix)
-- `--sync`: Sync results back to bucket after retry (requires --fix)
+- `--sync`: Sync results to bucket (works with or without --fix)
+  - With `--fix`: Syncs after retry for failed scenarios
+  - Without `--fix`: Syncs if local completion > bucket completion for passing scenarios
 - `--bucket-path PATH`: GCS bucket path (default: circumpolar_model_output/recent2)
 - `--partition, -p PARTITION`: SLURM partition for retry jobs (default: spot)
 - `--nowalltime`: Remove #SBATCH --time lines from retry batch slurm scripts
@@ -47,7 +49,13 @@ python debug/fix_tile.py --tile H7_V8 --fix
    - Uses bucket completion percentage when local is not available
 3. For each scenario (ssp_1_2_6 and ssp_5_8_5):
    - Reports "PASSED" if completion >99%, otherwise "FAILED"
-4. If `--fix` is enabled and scenarios truly failed:
+4. **If all scenarios PASSED locally and `--sync` enabled:**
+   - Checks bucket completion for comparison
+   - Compares local vs bucket completion percentages
+   - If local > bucket: automatically syncs local results to bucket
+   - If bucket ≥ local: skips sync (bucket is up to date)
+   - This ensures bucket always has the best available results
+5. If `--fix` is enabled and scenarios truly failed:
    - Uses existing local directory if available (saves bandwidth)
    - Otherwise pulls tile from GCS bucket to `{tile_name}_sc` directory
    - Runs `batch_status_checker.py --individual-retry` only for scenarios that need fixing
@@ -67,8 +75,11 @@ python debug/fix_tile.py --tile H7_V8 --fix
 # Check, fix, and auto-submit SLURM jobs without walltime limits
 python debug/fix_tile.py --tile H7_V8 --fix --submit --nowalltime
 
-# Check, fix, submit, and sync results back to bucket
+# Check, fix, submit, and sync results back to bucket (for failed scenarios)
 python debug/fix_tile.py --tile H7_V8 --fix --submit --sync
+
+# Check local completion and sync to bucket if local is better (no fix needed)
+python debug/fix_tile.py --tile H7_V8 --sync
 
 # Check completion for test tiles from file
 python debug/fix_tile.py tiles/test_tile.txt

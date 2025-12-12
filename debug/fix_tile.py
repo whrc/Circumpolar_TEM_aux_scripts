@@ -490,6 +490,9 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
         print(f"  Local directory found: {local_tile_dir}")
         print("  Checking local completion first...")
     
+    # Track local completions for comparison with bucket
+    local_completions = {}
+    
     # Check each scenario
     for short_name, full_name in SCENARIO_MAP.items():
         status = "FAILED"
@@ -502,6 +505,9 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
             local_completion = check_local_scenario_completion(local_tile_dir, full_name)
             
             if local_completion is not None:
+                # Store local completion for later comparison
+                local_completions[full_name] = local_completion
+                
                 # Use local completion
                 completion_str = f"{local_completion:.2f}% (local)"
                 if local_completion > THRESHOLD:
@@ -541,6 +547,54 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
         
         print(f"  {short_name:15s}: {completion_str:15s} [{status}]")
         results[short_name] = {'status': status, 'completion': completion_str}
+    
+    # If local scenarios all passed and sync is enabled, check if bucket needs updating
+    if local_tile_dir and not failed_scenarios and sync and local_completions:
+        print(f"\n{'='*80}")
+        print("All local scenarios passed. Checking bucket completion...")
+        print(f"{'='*80}")
+        
+        # Check bucket completion for comparison
+        if not completions:
+            completions = analyze_tile_completion(tile_name, bucket_path)
+        
+        # Compare local vs bucket and sync if local is better
+        scenarios_to_sync = []
+        for short_name, full_name in SCENARIO_MAP.items():
+            if full_name in local_completions:
+                local_comp = local_completions[full_name]
+                bucket_comp = completions.get(full_name)
+                
+                if bucket_comp is not None:
+                    print(f"  {short_name:15s}: local={local_comp:.2f}%, bucket={bucket_comp:.2f}%", end="")
+                    if local_comp > bucket_comp:
+                        print(" → Sync needed")
+                        scenarios_to_sync.append((short_name, full_name))
+                    else:
+                        print(" → Bucket up to date")
+                else:
+                    print(f"  {short_name:15s}: local={local_comp:.2f}%, bucket=Not found → Sync needed")
+                    scenarios_to_sync.append((short_name, full_name))
+        
+        # Sync scenarios where local is better
+        if scenarios_to_sync:
+            print(f"\n{'='*80}")
+            print(f"Syncing {len(scenarios_to_sync)} scenario(s) to bucket...")
+            print(f"{'='*80}")
+            
+            working_dir = os.getcwd()
+            for short_name, full_name in scenarios_to_sync:
+                # Remove _split suffix from scenario name for sync
+                scenario_for_sync = full_name.replace('_split', '')
+                
+                print(f"\n--- Syncing scenario: {short_name} ({scenario_for_sync}) ---")
+                sync_success = sync_tile_to_bucket(tile_name, scenario_for_sync, working_dir)
+                if sync_success:
+                    print(f"✓ Successfully synced {short_name}")
+                else:
+                    print(f"✗ Failed to sync {short_name}")
+        else:
+            print(f"\n✓ Bucket is up to date, no sync needed")
     
     # If fix_failed is enabled and there are failures, attempt to fix them
     if fix_failed and failed_scenarios:
