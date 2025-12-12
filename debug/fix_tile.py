@@ -313,6 +313,63 @@ def run_batch_retry(tile_dir, scenario, partition='spot', submit=False, nowallti
         return False
 
 
+def check_local_scenario_completion(tile_dir, scenario):
+    """
+    Check completion percentage of a scenario in local directory.
+    
+    Args:
+        tile_dir: Path to tile directory (e.g., /path/to/H7_V8_sc)
+        scenario: Scenario name with _split suffix (e.g., ssp1_2_6_mri_esm2_0_split)
+        
+    Returns:
+        float or None: Completion percentage if successful, None if error or not found
+    """
+    try:
+        scenario_path = os.path.join(tile_dir, scenario)
+        
+        # Check if scenario path exists
+        if not os.path.exists(scenario_path):
+            return None
+        
+        # Look for all_merged/run_status.nc first, then fall back to checking batches
+        all_merged_status = os.path.join(scenario_path, "all_merged", "run_status.nc")
+        
+        if os.path.exists(all_merged_status):
+            # Get the run-mask file (without _split suffix in scenario name)
+            scenario_base = scenario.replace('_split', '')
+            scenario_base_path = os.path.join(tile_dir, scenario_base)
+            run_mask_path = os.path.join(scenario_base_path, "run-mask.nc")
+            
+            if os.path.exists(run_mask_path):
+                # Use the same calculation as analyze_tile_completion
+                ds_status = xr.open_dataset(all_merged_status, decode_times=False)
+                run_status = ds_status['run_status'].values
+                
+                ds_mask = xr.open_dataset(run_mask_path, decode_times=False)
+                run_mask = ds_mask['run'].values
+                
+                if run_status.shape == run_mask.shape:
+                    valid_mask = (run_mask == 1) & (run_status != -9999) & (run_mask != -999)
+                    run_status_filtered = run_status[valid_mask]
+                    count_100 = np.sum(run_status_filtered == 100)
+                    total_cells_to_run = run_status_filtered.size
+                    
+                    if total_cells_to_run > 0:
+                        completion_percentage = (count_100 / total_cells_to_run) * 100
+                        ds_status.close()
+                        ds_mask.close()
+                        return completion_percentage
+                
+                ds_status.close()
+                ds_mask.close()
+        
+        return None
+        
+    except Exception as e:
+        print(f"  Warning: Could not check local completion for {scenario}: {e}", file=sys.stderr)
+        return None
+
+
 def sync_tile_to_bucket(tile_name, scenario, working_dir):
     """
     Run sync_tile_to_bucket.py to sync results back to the bucket.
@@ -448,8 +505,30 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
                 print(f"✗ Failed to pull tile, cannot proceed with fix", file=sys.stderr)
                 return results
         
-        # Run batch retry for each failed scenario
+        # Check local completion for scenarios in existing directory
+        # Filter out scenarios that are already complete locally
+        scenarios_to_fix = []
         for short_name, full_name in failed_scenarios:
+            local_completion = check_local_scenario_completion(tile_dir, full_name)
+            
+            if local_completion is not None and local_completion > THRESHOLD:
+                print(f"\n--- Scenario {short_name} ({full_name}) ---")
+                print(f"  Local completion: {local_completion:.2f}%")
+                print(f"  ✓ Already complete locally, skipping retry")
+            else:
+                if local_completion is not None:
+                    print(f"\n--- Scenario {short_name} ({full_name}) ---")
+                    print(f"  Local completion: {local_completion:.2f}%")
+                    print(f"  Needs retry")
+                scenarios_to_fix.append((short_name, full_name))
+        
+        # Update failed_scenarios to only include those that need fixing
+        if not scenarios_to_fix:
+            print(f"\n✓ All scenarios are already complete locally, nothing to fix!")
+            return results
+        
+        # Run batch retry for each scenario that needs fixing
+        for short_name, full_name in scenarios_to_fix:
             print(f"\n--- Fixing scenario: {short_name} ({full_name}) ---")
             success = run_batch_retry(tile_dir, full_name, partition, submit, nowalltime)
             

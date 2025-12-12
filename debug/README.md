@@ -36,8 +36,9 @@ python debug/fix_tile.py --tile H7_V8 --fix
 4. If `--fix` is enabled and tiles fail:
    - Checks if `{tile_name}_sc` or `{tile_name}` directory already exists
    - If exists, skips pull and uses existing directory (saves time/bandwidth)
-   - If not, pulls the tile from GCS bucket to `{tile_name}_sc` directory
-   - Runs `batch_status_checker.py --individual-retry` for each failed scenario
+   - **Checks local scenario completion** - if scenario is already >99% complete locally, skips retry
+   - If not exists, pulls the tile from GCS bucket to `{tile_name}_sc` directory
+   - Runs `batch_status_checker.py --individual-retry` only for scenarios that need fixing
    - Creates retry batches for incomplete runs
    - If `--submit` is enabled: automatically submits SLURM jobs for retry batches
    - If `--sync` is enabled: syncs results back to bucket after retry using `sync_tile_to_bucket.py`
