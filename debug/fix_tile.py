@@ -24,6 +24,7 @@ import subprocess
 import os
 import argparse
 import tempfile
+import re
 from pathlib import Path
 import xarray as xr
 import numpy as np
@@ -315,7 +316,7 @@ def run_batch_retry(tile_dir, scenario, partition='spot', submit=False, nowallti
 
 def check_local_scenario_completion(tile_dir, scenario):
     """
-    Check completion percentage of a scenario in local directory.
+    Check completion percentage of a scenario in local directory using external script.
     
     Args:
         tile_dir: Path to tile directory (e.g., /path/to/H7_V8_sc)
@@ -331,40 +332,54 @@ def check_local_scenario_completion(tile_dir, scenario):
         if not os.path.exists(scenario_path):
             return None
         
-        # Look for all_merged/run_status.nc first, then fall back to checking batches
-        all_merged_status = os.path.join(scenario_path, "all_merged", "run_status.nc")
+        # Find check_tile_run_completion.py script (should be in parent directory)
+        current_script_dir = Path(__file__).parent
+        check_script_path = current_script_dir.parent / "check_tile_run_completion.py"
         
-        if os.path.exists(all_merged_status):
-            # Get the run-mask file (without _split suffix in scenario name)
-            scenario_base = scenario.replace('_split', '')
-            scenario_base_path = os.path.join(tile_dir, scenario_base)
-            run_mask_path = os.path.join(scenario_base_path, "run-mask.nc")
-            
-            if os.path.exists(run_mask_path):
-                # Use the same calculation as analyze_tile_completion
-                ds_status = xr.open_dataset(all_merged_status, decode_times=False)
-                run_status = ds_status['run_status'].values
-                
-                ds_mask = xr.open_dataset(run_mask_path, decode_times=False)
-                run_mask = ds_mask['run'].values
-                
-                if run_status.shape == run_mask.shape:
-                    valid_mask = (run_mask == 1) & (run_status != -9999) & (run_mask != -999)
-                    run_status_filtered = run_status[valid_mask]
-                    count_100 = np.sum(run_status_filtered == 100)
-                    total_cells_to_run = run_status_filtered.size
-                    
-                    if total_cells_to_run > 0:
-                        completion_percentage = (count_100 / total_cells_to_run) * 100
-                        ds_status.close()
-                        ds_mask.close()
-                        return completion_percentage
-                
-                ds_status.close()
-                ds_mask.close()
+        if not check_script_path.exists():
+            print(f"  Warning: check_tile_run_completion.py not found at {check_script_path}", file=sys.stderr)
+            return None
         
+        # Run the external script
+        cmd = [
+            sys.executable,
+            str(check_script_path),
+            scenario_path
+        ]
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60  # 60 second timeout
+        )
+        
+        if result.returncode != 0:
+            print(f"  Warning: check_tile_run_completion.py failed for {scenario}", file=sys.stderr)
+            if result.stderr:
+                print(f"  Error output: {result.stderr}", file=sys.stderr)
+            return None
+        
+        # Parse the output to extract completion percentage
+        # Expected format: "Overall Completion: XX.XX%"
+        output = result.stdout
+        
+        for line in output.split('\n'):
+            if 'Overall Completion:' in line:
+                # Extract the percentage value
+                # Format: "Overall Completion: 99.45%"
+                match = re.search(r'Overall Completion:\s*([\d.]+)%', line)
+                if match:
+                    completion = float(match.group(1))
+                    return completion
+        
+        # If we couldn't find the completion line, return None
+        print(f"  Warning: Could not parse completion percentage from output for {scenario}", file=sys.stderr)
         return None
         
+    except subprocess.TimeoutExpired:
+        print(f"  Warning: Timeout checking local completion for {scenario}", file=sys.stderr)
+        return None
     except Exception as e:
         print(f"  Warning: Could not check local completion for {scenario}: {e}", file=sys.stderr)
         return None

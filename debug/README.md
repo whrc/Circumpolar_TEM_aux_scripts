@@ -8,6 +8,11 @@ This directory contains scripts for debuging TEM (Terrestrial Ecosystem Model) o
 
 Check tile completion status for SSP scenarios (ssp_1_2_6 and ssp_5_8_5) and automatically fix failed tiles.
 
+**Dependencies:**
+- `~/Circumpolar_TEM_aux_scripts/check_tile_run_completion.py` - Used to check local scenario completion
+- `~/Circumpolar_TEM_aux_scripts/debug/batch_status_checker.py` - Used for creating retry batches
+- `~/Circumpolar_TEM_aux_scripts/sync_tile_to_bucket.py` - Used for syncing results (with --sync option)
+
 **Usage:**
 ```bash
 # Check tiles from a file
@@ -31,7 +36,8 @@ python debug/fix_tile.py --tile H7_V8 --fix
 
 **What it does:**
 1. **Priority 1: Check local directory first** (`{tile_name}_sc` or `{tile_name}`)
-   - If local directory exists: checks local completion for all scenarios
+   - If local directory exists: checks local completion using `check_tile_run_completion.py`
+   - External script analyzes all batch_*/output/run_status.nc files in the scenario
    - If local completion available: uses local data (shows "XX.XX% (local)")
    - If local >99% → Reports "PASSED (local)" and **skips retry**
    - If local ≤99% → Reports "FAILED" and adds to retry queue
