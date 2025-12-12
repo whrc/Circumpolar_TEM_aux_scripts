@@ -30,14 +30,17 @@ python debug/fix_tile.py --tile H7_V8 --fix
 - `--nowalltime`: Remove #SBATCH --time lines from retry batch slurm scripts
 
 **What it does:**
-1. Downloads run_status.nc and run-mask.nc from GCS bucket to check remote completion
-2. **Checks if tile directory exists locally** (`{tile_name}_sc` or `{tile_name}`)
+1. **Priority 1: Check local directory first** (`{tile_name}_sc` or `{tile_name}`)
+   - If local directory exists: checks local completion for all scenarios
+   - If local completion available: uses local data (shows "XX.XX% (local)")
+   - If local >99% → Reports "PASSED (local)" and **skips retry**
+   - If local ≤99% → Reports "FAILED" and adds to retry queue
+2. **Priority 2: Check bucket only if needed**
+   - If local directory doesn't exist: downloads run_status.nc and run-mask.nc from GCS bucket
+   - If local check fails for a scenario: falls back to bucket data for that scenario
+   - Uses bucket completion percentage when local is not available
 3. For each scenario (ssp_1_2_6 and ssp_5_8_5):
-   - If bucket shows >99% → Reports "PASSED"
-   - If bucket shows ≤99% or not found:
-     - If local directory exists and `--fix` enabled: checks local completion
-     - If local >99% → Reports "PASSED (local)" and **skips retry**
-     - If local ≤99% or not found → Reports "FAILED" and adds to retry queue
+   - Reports "PASSED" if completion >99%, otherwise "FAILED"
 4. If `--fix` is enabled and scenarios truly failed:
    - Uses existing local directory if available (saves bandwidth)
    - Otherwise pulls tile from GCS bucket to `{tile_name}_sc` directory

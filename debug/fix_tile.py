@@ -451,14 +451,11 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
     print(f"Tile: {tile_name}")
     print(f"{'='*80}")
     
-    # Analyze tile completion directly
-    completions = analyze_tile_completion(tile_name, bucket_path)
-    
     # Track failed scenarios
     failed_scenarios = []
     results = {}
     
-    # Check if tile directory exists locally for early completion check
+    # Check if tile directory exists locally - prioritize local check
     working_dir = os.getcwd()
     tile_dir_check = os.path.join(working_dir, f"{tile_name}_sc")
     tile_dir_alt_check = os.path.join(working_dir, tile_name)
@@ -469,51 +466,59 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
     elif os.path.exists(tile_dir_alt_check):
         local_tile_dir = tile_dir_alt_check
     
+    # Only check bucket if local doesn't exist
+    completions = {}
+    if not local_tile_dir:
+        print("  Checking bucket completion...")
+        completions = analyze_tile_completion(tile_name, bucket_path)
+    else:
+        print(f"  Local directory found: {local_tile_dir}")
+        print("  Checking local completion first...")
+    
     # Check each scenario
     for short_name, full_name in SCENARIO_MAP.items():
         status = "FAILED"
         completion_str = "N/A"
+        local_completion = None
         bucket_completion = None
         
-        # First check bucket completion
-        if full_name in completions and completions[full_name] is not None:
-            bucket_completion = completions[full_name]
-            completion_str = f"{bucket_completion:.2f}%"
+        # Priority 1: Check local if directory exists
+        if local_tile_dir:
+            local_completion = check_local_scenario_completion(local_tile_dir, full_name)
             
-            if bucket_completion > THRESHOLD:
-                status = "PASSED"
-            else:
-                # Bucket shows failed, but check local if directory exists
-                if local_tile_dir and fix_failed:
-                    local_completion = check_local_scenario_completion(local_tile_dir, full_name)
-                    if local_completion is not None:
-                        # Update completion_str to show local value
-                        completion_str = f"{local_completion:.2f}% (local)"
-                        if local_completion > THRESHOLD:
-                            # Local is complete, update status
-                            status = "PASSED"
-                        else:
-                            # Still failed, add to retry list
-                            failed_scenarios.append((short_name, full_name))
-                    else:
-                        # Local check failed, keep bucket value and add to retry
-                        failed_scenarios.append((short_name, full_name))
+            if local_completion is not None:
+                # Use local completion
+                completion_str = f"{local_completion:.2f}% (local)"
+                if local_completion > THRESHOLD:
+                    status = "PASSED"
                 else:
-                    # No local directory or fix not enabled, add to failed
                     failed_scenarios.append((short_name, full_name))
-        else:
-            # Not found in bucket, check local if exists
-            if local_tile_dir and fix_failed:
-                local_completion = check_local_scenario_completion(local_tile_dir, full_name)
-                if local_completion is not None:
-                    if local_completion > THRESHOLD:
+            else:
+                # Local check failed, fall back to bucket if needed
+                if not completions:
+                    # Haven't checked bucket yet, do it now
+                    print(f"    Local check failed for {short_name}, checking bucket...")
+                    completions = analyze_tile_completion(tile_name, bucket_path)
+                
+                # Use bucket data as fallback
+                if full_name in completions and completions[full_name] is not None:
+                    bucket_completion = completions[full_name]
+                    completion_str = f"{bucket_completion:.2f}%"
+                    if bucket_completion > THRESHOLD:
                         status = "PASSED"
-                        completion_str = f"{local_completion:.2f}% (local)"
                     else:
-                        completion_str = f"{local_completion:.2f}% (local)"
                         failed_scenarios.append((short_name, full_name))
                 else:
                     completion_str = "Not found/Error"
+                    failed_scenarios.append((short_name, full_name))
+        else:
+            # Priority 2: No local directory, use bucket data
+            if full_name in completions and completions[full_name] is not None:
+                bucket_completion = completions[full_name]
+                completion_str = f"{bucket_completion:.2f}%"
+                if bucket_completion > THRESHOLD:
+                    status = "PASSED"
+                else:
                     failed_scenarios.append((short_name, full_name))
             else:
                 completion_str = "Not found/Error"
