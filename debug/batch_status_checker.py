@@ -129,7 +129,7 @@ def check_run_status(base_folder, nc_file, batch_folder_name):
 
     return m, n
 
-def run_extract_failed_cells(batch_path, script_path=None, submit=False, partition='dask'):
+def run_extract_failed_cells(batch_path, script_path=None, submit=False, partition='dask', nowalltime=False):
     """
     Run extract_failed_cells.py on a batch.
     
@@ -138,6 +138,7 @@ def run_extract_failed_cells(batch_path, script_path=None, submit=False, partiti
         script_path: Path to extract_failed_cells.py script (if None, tries to find it)
         submit: If True, pass --submit flag to extract_failed_cells.py to auto-submit the job
         partition: SLURM partition to use for retry batch jobs (default: 'dask')
+        nowalltime: If True, remove #SBATCH --time line from retry slurm script (default: False)
         
     Returns:
         tuple: (success, job_id) where success is bool and job_id is string or None
@@ -160,6 +161,8 @@ def run_extract_failed_cells(batch_path, script_path=None, submit=False, partiti
         cmd = [sys.executable, str(script_path), str(batch_path), "--force", "--partition", partition]
         if submit:
             cmd.append("--submit")
+        if nowalltime:
+            cmd.append("--nowalltime")
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         # Display output from extract_failed_cells.py (goes to console and log file)
@@ -329,6 +332,11 @@ if __name__ == "__main__":
         default='dask',
         help='SLURM partition to use for retry batch jobs (default: dask)'
     )
+    parser.add_argument(
+        '--nowalltime',
+        action='store_true',
+        help='Remove #SBATCH --time line from retry batch slurm scripts'
+    )
     
     args = parser.parse_args()
     
@@ -428,7 +436,7 @@ if __name__ == "__main__":
                 
                 for batch_path in unfinished_batches:
                     print(f"\nProcessing: {batch_path}")
-                    success, job_id = run_extract_failed_cells(batch_path, submit=args.submit, partition=args.partition)
+                    success, job_id = run_extract_failed_cells(batch_path, submit=args.submit, partition=args.partition, nowalltime=args.nowalltime)
                     
                     if success and args.submit and job_id:
                         job_tracking[job_id] = batch_path
