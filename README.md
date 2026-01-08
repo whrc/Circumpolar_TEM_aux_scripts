@@ -16,7 +16,7 @@ This document serves as a comprehensive work plan and operational guide for mana
 
 ## The map of the Circumpolar
 
-![Map of the Circumpolar](circ_map_ids.jpg)
+![Map of the Circumpolar](images/circ_map_ids.jpg)
 
 ## Empty tiles
 |    |    |     |     |    |    |
@@ -30,23 +30,23 @@ to the boundary of the land (as delineated in the example below - pink polygons)
 However, some of this land (e.g. tiny islands of the Aleutians) were not covered by the 
 vegetation map for instance. 
 
-![Example of an empty tile](empty_tile_example1.jpeg)
+![Example of an empty tile](images/empty_tile_example1.jpeg)
 
 Empty tile could also result from being located entirely on Greenland icefield (e.g. H10_V7)
 
-![Example of an empty tile](empty_tile_example2.jpeg)
+![Example of an empty tile](images/empty_tile_example2.jpeg)
 
 One last case occuring in this list of empty tiles, is the lack of coverage from the 
 vegetation map in the sourthern most regions (see example 3 below) 
 
-![Example of an empty tile](empty_tile_example3.jpeg)
+![Example of an empty tile](images/empty_tile_example3.jpeg)
 
 
 ## Stage I: Alaska Tiles (dynamic OLT) [olt-noncost]
 
 Here we outline the workflow for processing tiles for the Alaska region. Some of the tiles overlap with Canada.
 
-![Map of Alaska tiles](ak_can.png)
+![Map of Alaska tiles](images/ak_can.png)
 
 ---
 
@@ -357,7 +357,7 @@ tail -f LOG/H11_V15.log
 
 ## Stage II: Canada Tiles [constant OLT]
 
-![Map of the Canadian Tiles](canada_tile_ids.png)
+![Map of the Canadian Tiles](images/canada_tile_ids.png)
 
 
 | Column 1 | Column 2 | Column 3 |
