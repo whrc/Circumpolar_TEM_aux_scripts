@@ -170,8 +170,7 @@ Only **`ssp1_2_6_access_cm2__ssp1_2_6`** will be used in this stage.
 From the directory **above** the scenario folder, run:
 
 ```bash
-bp batch split -i ssp1_2_6_access_cm2__ssp1_2_6 -b <path_to_folder>/<tile_name>_scen/ssp1_2_6_access_cm2__ssp1_2_6_split \
-  --p 100 --e 2000 --s 200 --t 123 --n 76
+bp batch split -i {input_path} -b {output_path} --p 100 --e 2000 --s 200 --t 124 --n 76
 ```
 
 This will create 100 batch folders in the `..._split` directory.
