@@ -204,6 +204,25 @@ def resubmit_unfinished_jobs_fresh(split_path):
     resubmit_script = os.path.expanduser("~/Circumpolar_TEM_aux_scripts/resubmit_unfinished_fresh.py")
     run_cmd(f"python {resubmit_script} {split_path} --p dusk")
 
+def run_fix_tile(tile_name, partition='dask', scenario=None):
+    """Run fix_tile.py to check and fix failed cells for a tile.
+    
+    This is a more optimized approach for rerunning failed cells compared to
+    the resubmit_unfinished scripts. It uses fix_tile.py which handles
+    individual cell retries more efficiently.
+    
+    Args:
+        tile_name: Name of the tile (e.g., H10_V16)
+        partition: SLURM partition to use (default: dask)
+        scenario: Optional scenario name to check only (e.g., ssp1_2_6_mri_esm2_0_split)
+    """
+    print(f"[FIX TILE] Running fix_tile.py for {tile_name}" + (f" scenario {scenario}" if scenario else ""))
+    fix_tile_script = os.path.expanduser("~/Circumpolar_TEM_aux_scripts/debug/fix_tile.py")
+    cmd = f"python3 {fix_tile_script} --tile {tile_name} --fix -p {partition} --submit"
+    if scenario:
+        cmd += f" --scenario {scenario}"
+    run_cmd(cmd)
+
 def run_batch_scenario(split_path):
     #before submitting batches check for completion
     completion = check_run_completion(split_path)
@@ -273,7 +292,7 @@ def process_remaining_scenarios(path_to_folder, tile_name, scenarios):
         split_path = f"{path_to_folder}/{tile_name}_sc/{scenario}_split"
         run_batch_scenario(split_path)
         wait_for_jobs()
-        resubmit_unfinished_jobs_fresh(split_path)
+        run_fix_tile(tile_name, scenario=f"{scenario}_split")
         wait_for_jobs()
         trim_sc_files(split_path)
         merge_and_plot(split_path)
@@ -367,7 +386,7 @@ def main():
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
         run_batch_scenario(base_split_path)
         wait_for_jobs()
-        resubmit_unfinished_jobs(base_split_path)
+        run_fix_tile(tile_name, scenario=f"{base_scenario_name}_split")
         wait_for_jobs()
         merge_and_plot(base_split_path)
 
@@ -391,7 +410,7 @@ def main():
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
         run_batch_scenario(base_split_path)
         wait_for_jobs()
-        resubmit_unfinished_jobs(base_split_path)
+        run_fix_tile(tile_name, scenario=f"{base_scenario_name}_split")
         wait_for_jobs()
         merge_and_plot(base_split_path)
 
@@ -425,7 +444,7 @@ def main():
             for scenario_i in scenario_list:
                 full_scenario_path = os.path.join(path_to_tile, scenario_i)
                 print(full_scenario_path)
-                resubmit_unfinished_jobs_fresh(full_scenario_path)
+                run_fix_tile(tile_name, scenario=scenario_i)
                 wait_for_jobs()
                 trim_sc_files(full_scenario_path)
                 merge_and_plot(full_scenario_path)
@@ -443,9 +462,9 @@ def main():
     # print completion status before finalizing
     print_completion_status(path_to_folder, tile_name)
     
-    # finalize by copying results to GCS
-    if not args.bucket_path:
-        finalize(path_to_folder, tile_name)
+    # # finalize by copying results to GCS
+    # if not args.bucket_path:
+    #     finalize(path_to_folder, tile_name)
 
 
 if __name__ == "__main__":

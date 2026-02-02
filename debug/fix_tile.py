@@ -133,7 +133,7 @@ def calculate_completion_percentage(run_status_path, run_mask_path):
         return None
 
 
-def analyze_tile_completion(tile_name, bucket_path):
+def analyze_tile_completion(tile_name, bucket_path, scenario_filter=None):
     """Download and analyze run_status.nc files for a specific tile.
     
     Uses run-mask.nc to filter which cells to include in the calculation.
@@ -141,6 +141,7 @@ def analyze_tile_completion(tile_name, bucket_path):
     Args:
         tile_name: Tile name to process
         bucket_path: GCS bucket path (e.g., 'circumpolar_model_output/recent2')
+        scenario_filter: Optional scenario name to check only (e.g., 'ssp1_2_6_mri_esm2_0_split')
         
     Returns:
         Dictionary mapping scenario names to completion percentages or None if error
@@ -151,7 +152,12 @@ def analyze_tile_completion(tile_name, bucket_path):
     with tempfile.TemporaryDirectory() as temp_dir:
         completions = {}
         
-        for scenario_full_name in SCENARIO_MAP.values():
+        # Filter scenarios if specified
+        scenarios_to_check = SCENARIO_MAP.values()
+        if scenario_filter:
+            scenarios_to_check = [s for s in SCENARIO_MAP.values() if s == scenario_filter]
+        
+        for scenario_full_name in scenarios_to_check:
             # Construct GCP paths
             if base_path:
                 run_status_gcp_path = f"gs://{bucket}/{base_path}/{tile_name}/{scenario_full_name}/all_merged/run_status.nc"
@@ -447,8 +453,8 @@ def sync_tile_to_bucket(tile_name, scenario, working_dir):
         return False
 
 
-def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partition='spot', submit=False, nowalltime=False, sync=False):
-    """Check completion status for a tile across both SSP scenarios and optionally fix failures.
+def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partition='spot', submit=False, nowalltime=False, sync=False, scenario_filter=None):
+    """Check completion status for a tile across SSP scenarios and optionally fix failures.
     
     Args:
         tile_name: Name of the tile to check
@@ -458,12 +464,15 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
         submit: If True, automatically submit SLURM jobs
         nowalltime: If True, remove #SBATCH --time lines from retry scripts
         sync: If True, sync results back to bucket after retry
+        scenario_filter: Optional scenario name to check only (e.g., 'ssp1_2_6_mri_esm2_0_split')
         
     Returns:
         Dictionary with scenario completion status
     """
     print(f"\n{'='*80}")
     print(f"Tile: {tile_name}")
+    if scenario_filter:
+        print(f"Scenario: {scenario_filter}")
     print(f"{'='*80}")
     
     # Track failed scenarios
@@ -485,7 +494,7 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
     completions = {}
     if not local_tile_dir:
         print("  Checking bucket completion...")
-        completions = analyze_tile_completion(tile_name, bucket_path)
+        completions = analyze_tile_completion(tile_name, bucket_path, scenario_filter)
     else:
         print(f"  Local directory found: {local_tile_dir}")
         print("  Checking local completion first...")
@@ -493,8 +502,13 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
     # Track local completions for comparison with bucket
     local_completions = {}
     
+    # Filter scenarios if specified
+    scenarios_to_check = SCENARIO_MAP.items()
+    if scenario_filter:
+        scenarios_to_check = [(k, v) for k, v in SCENARIO_MAP.items() if v == scenario_filter]
+    
     # Check each scenario
-    for short_name, full_name in SCENARIO_MAP.items():
+    for short_name, full_name in scenarios_to_check:
         status = "FAILED"
         completion_str = "N/A"
         local_completion = None
@@ -545,8 +559,12 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
                 completion_str = "Not found/Error"
                 failed_scenarios.append((short_name, full_name))
         
-        print(f"  {short_name:15s}: {completion_str:15s} [{status}]")
+        print(f"  {short_name:15s}: {completion_str:20s} [{status}]")
         results[short_name] = {'status': status, 'completion': completion_str}
+    
+    # If --fix was passed but all scenarios passed, inform user
+    if fix_failed and not failed_scenarios:
+        print(f"\n✓ All scenarios above {THRESHOLD}% threshold - no fix needed")
     
     # If local scenarios all passed and sync is enabled, check if bucket needs updating
     if local_tile_dir and not failed_scenarios and sync and local_completions:
@@ -599,7 +617,7 @@ def check_tile_completion(tile_name, fix_failed=False, bucket_path=None, partiti
     # If fix_failed is enabled and there are failures, attempt to fix them
     if fix_failed and failed_scenarios:
         print(f"\n{'='*80}")
-        print(f"Attempting to fix {len(failed_scenarios)} failed scenario(s)...")
+        print(f"Fixing {len(failed_scenarios)} scenario(s) below {THRESHOLD}% threshold...")
         print(f"{'='*80}")
         
         # Use local_tile_dir if it exists, otherwise pull
@@ -644,14 +662,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Check a single tile
+  # Check a single tile (all scenarios)
   python debug/fix_tile.py --tile H7_V8
+  
+  # Check a single tile for a specific scenario only
+  python debug/fix_tile.py --tile H7_V8 --scenario ssp1_2_6_mri_esm2_0_split
   
   # Check and fix a single tile (create retry batches only)
   python debug/fix_tile.py --tile H7_V8 --fix
   
-  # Check, fix, and auto-submit SLURM jobs
-  python debug/fix_tile.py --tile H7_V8 --fix --submit
+  # Check, fix, and auto-submit SLURM jobs for a specific scenario
+  python debug/fix_tile.py --tile H7_V8 --fix --submit --scenario ssp5_8_5_mri_esm2_0_split
   
   # Check, fix, submit, and sync results back to bucket
   python debug/fix_tile.py --tile H7_V8 --fix --submit --sync
@@ -712,6 +733,11 @@ Examples:
         help='Sync results back to bucket after retry (requires --fix)'
     )
     
+    parser.add_argument(
+        '-s', '--scenario',
+        help='Check only this specific scenario (e.g., ssp1_2_6_mri_esm2_0_split or ssp5_8_5_mri_esm2_0_split)'
+    )
+    
     args = parser.parse_args()
     
     # Validate that --submit requires --fix
@@ -737,6 +763,8 @@ Examples:
         sys.exit(1)
     
     print(f"Bucket: gs://{args.bucket_path}")
+    if args.scenario:
+        print(f"Scenario filter: {args.scenario}")
     if args.fix:
         print(f"Fix mode enabled - will automatically retry failed tiles")
         print(f"Partition: {args.partition}")
@@ -756,7 +784,8 @@ Examples:
             partition=args.partition,
             submit=args.submit,
             nowalltime=args.nowalltime,
-            sync=args.sync
+            sync=args.sync,
+            scenario_filter=args.scenario
         )
     
     print(f"\n{'='*80}")
