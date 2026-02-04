@@ -122,7 +122,7 @@ but the cause is very likely the cold climate, not the  DSL. So, unless there is
    ```
    Copy your assigned tiles into this folder and navigate into the working tile directory.
    ```bash
-   gsutil -m  cp -r gs://regionalinputs/CIRCUMPOLAR/<tile_name>
+   gsutil -m  cp -r gs://regionalinputs/CIRCUMPOLAR/<tile_name> .
    ```
 ---
 
@@ -134,7 +134,7 @@ It could be worse to check the `run-mask.nc` file in the tile. If all zeros, it 
 Run Hélène’s gap-filling script:
 
 ```bash
-python process_climate_data_gapfill.py /path/to/tile
+python ~/Circumpolar_TEM_aux_scripts/process_climate_data_gapfill.py /path/to/tile
 ```
 
 > **Note**: You may need to rename the gap-filled output file (this step will be improved in future versions).
@@ -148,7 +148,7 @@ gap-filled data in separate files from the original downscaled climate data.
 Check for errors or anomalies (e.g., negative precipitation or NIRR values):
 
 ```bash
-python analyze_TEM_nc.py /path/to/folder_or_file
+python ~/Circumpolar_TEM_aux_scripts/analyze_TEM_nc.py /path/to/folder_or_file
 ```
 
 ---
@@ -158,7 +158,7 @@ python analyze_TEM_nc.py /path/to/folder_or_file
 Generate SSP1-2.6 scenarios using:
 
 ```bash
-python generate_climate_scenarios.py /path/to/input_folder /path/to/output_folder
+python ~/Circumpolar_TEM_aux_scripts/generate_climate_scenarios.py /path/to/input_folder /path/to/output_folder
 ```
 
 Only **`ssp1_2_6_access_cm2__ssp1_2_6`** will be used in this stage.
@@ -225,7 +225,7 @@ bp batch merge -b <tile_name>
 Once all batches are merged, run the plotting script.
 
 ```bash
-python plot_nc_all_files.py full_path_your_tile/ssp1_2_6_access_cm2__ssp1_2_6_split/all_merged/
+python ~/Circumpolar_TEM_aux_scripts/plot_nc_all_files.py full_path_your_tile/ssp1_2_6_access_cm2__ssp1_2_6_split/all_merged/
 ```
 
 ---
