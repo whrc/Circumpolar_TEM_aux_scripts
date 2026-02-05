@@ -1,6 +1,115 @@
 
 # 🧊 Circumpolar Run Work Plan
 
+---
+## Instruction on Step-by-Step Tile Run
+### Initial Setup
+
+### 1. Copy A Tile 
+
+   Navigate to  `/mnt/exacloud/<yourname>_woodwellclimate_org/`. 
+   Copy a tile into this folder.
+   ```bash
+   gsutil -m  cp -r gs://regionalinputs/CIRCUMPOLAR/<tile_id> .
+   ```
+---
+
+### 2. Process Climate Data
+
+It could be worse to check the `run-mask.nc` file in the tile. If all zeros, it means that all gridcells are off.
+Run Hélène’s gap-filling script:
+
+```bash
+python ~/Circumpolar_TEM_aux_scripts/process_climate_data_gapfill.py /mnt/exacloud/<yourname>_woodwellclimate_org/<tile_id>
+```
+
+---
+
+### 3. Analyze Input Data
+
+Check for errors or anomalies (e.g., negative precipitation or NIRR values):
+
+```bash
+python ~/Circumpolar_TEM_aux_scripts/analyze_TEM_nc.py /mnt/exacloud/<yourname>_woodwellclimate_org/<tile_id>
+```
+
+---
+
+### 3. Generate Climate Scenarios
+
+Generate SSP scenario using:
+
+```bash
+python ~/Circumpolar_TEM_aux_scripts/generate_climate_scenarios.py /mnt/exacloud/<yourname>_woodwellclimate_org/<tile_id> /mnt/exacloud/<yourname>_woodwellclimate_org/<tile_id>_sc
+```
+
+---
+
+### 4. Split Scenarios into Batches
+
+From the directory **above** the scenario folder, run:
+
+```bash
+bp batch split -i /mnt/exacloud/<yourname>_woodwellclimate_org/<tile_id>_sc/<sspx_x_x_model_id> -b /mnt/exacloud/<yourname>_woodwellclimate_org/<tile_id>_sc/<sspx_x_x_model_id>_split --p 100 --e 2000 --s 200 --t 124 --n 76
+```
+
+This will create 100 batch folders in the `..._split` directory.
+
+---
+
+### 5. Run Model Batches
+
+- **Run all batches at once**:
+  ```bash
+  bp batch run -b /mnt/exacloud/<yourname>_woodwellclimate_org/<tile_id>_sc/<sspx_x_x_model_id>_split`
+  ```
+
+- **Run a single batch**:
+  Navigate to the batch folder and run:
+  ```bash
+  sbatch slurm_runner.sh
+  ```
+
+---
+
+### 6. Monitor Execution
+
+Use `squeue` or `sacct` to monitor job progress:
+
+```bash
+squeue -u $USER
+squeue --me
+sacct -j <job_id>
+python ~/Circumpolar_TEM_aux_scripts/check_runs.py /mnt/exacloud/<yourname>_woodwellclimate_org/<tile_id>_sc/<sspx_x_x_model_id>_split
+python ~/Circumpolar_TEM_aux_scripts/check_tile_run_completion.py /mnt/exacloud/<yourname>_woodwellclimate_org/<tile_id>_sc/<sspx_x_x_model_id>_split
+```
+
+> An auxiliary monitoring script will be added to this repo soon.
+
+---
+
+### 7. Merge Output
+
+Once all batch jobs are complete:
+
+```bash
+bp batch merge -b /mnt/exacloud/<yourname>_woodwellclimate_org/<tile_id>_sc/<sspx_x_x_model_id>_split
+```
+This will create a folder `all_merged` folder inside the `<sspx_x_x_model_id>_split` folder
+
+---
+
+### 8. Plotting Results
+
+Once all batches are merged, run the plotting script.
+
+```bash
+python ~/Circumpolar_TEM_aux_scripts/plot_nc_all_files.py /mnt/exacloud/<yourname>_woodwellclimate_org/<tile_id>_sc/<sspx_x_x_model_id>_split/all_merged/
+```
+This will create a PDF file containing plots for all merged files. DONE!
+
+---
+
 This document serves as a comprehensive work plan and operational guide for managing, processing, and automating large-scale Circumpolar simulations using the DVM-DOS-TEM model. Below is a summary with links to relevant sections:
 
 ## 🔗 Quick Navigation
@@ -105,130 +214,7 @@ Removed tiles with run-status = 0 for all grid cells.
       - all_merged (need to have scenario name in the attr, tile_id, exec time)
         - summary_plots.pdf
 
----
-## Instruction on Step-by-Step Tile Run
-### Initial Setup
 
-1. **Disable DSL in config**  
-   Navigate to the `dvm-dos-tem/config/config.js` file and **turn off the DSL setting** for all stages [dsl: true].  *(Note: the current `pr` branch may have it enabled.)*
-
-HG: Why? It hasn't clearly been demonstrated that DSL was the reason for any error in the model. Cold climate simulations result in soil thermal computation being very slow, 
-but the cause is very likely the cold climate, not the  DSL. So, unless there is more evidence of serious issues with DSL, it should be turned on! We loose a lot of process-based dynamic by turning it off. Furthermore, all calibrations have been conducted with DSL on.
-
-2. **Create Alaska Working Directory**  
-   On `/mnt/exacloud`, create your working folder using your username:
-   ```
-   /mnt/exacloud/<yourname>_woodwellclimate_org/Alaska
-   ```
-   Copy your assigned tiles into this folder and navigate into the working tile directory.
-   ```bash
-   gsutil -m  cp -r gs://regionalinputs/CIRCUMPOLAR/<tile_name> .
-   ```
----
-
-## Workflow Steps
-
-### 1. Process Climate Data
-
-It could be worse to check the `run-mask.nc` file in the tile. If all zeros, it means that all gridcells are off.
-Run Hélène’s gap-filling script:
-
-```bash
-python ~/Circumpolar_TEM_aux_scripts/process_climate_data_gapfill.py /path/to/tile
-```
-
-> **Note**: You may need to rename the gap-filled output file (this step will be improved in future versions).
-HG: agreed - until the outputs have been thoroughly investigated - let's store the 
-gap-filled data in separate files from the original downscaled climate data.
-   
----
-
-### 2. Analyze Input Data
-
-Check for errors or anomalies (e.g., negative precipitation or NIRR values):
-
-```bash
-python ~/Circumpolar_TEM_aux_scripts/analyze_TEM_nc.py /path/to/folder_or_file
-```
-
----
-
-### 3. Generate Climate Scenarios
-
-Generate SSP1-2.6 scenarios using:
-
-```bash
-python ~/Circumpolar_TEM_aux_scripts/generate_climate_scenarios.py /path/to/input_folder /path/to/output_folder
-```
-
-Only **`ssp1_2_6_access_cm2__ssp1_2_6`** will be used in this stage.
-
----
-
-### 4. Split Scenarios into Batches
-
-From the directory **above** the scenario folder, run:
-
-```bash
-bp batch split -i {input_path} -b {output_path} --p 100 --e 2000 --s 200 --t 124 --n 76
-```
-
-This will create 100 batch folders in the `..._split` directory.
-
-HG: transient run should be 124 years! The historical inputs run from January 1st 1901 to December 31st 2024, i.e. 124 years. With current specs, there is temporal discontinuity btw historical and scenario simulations. One of the consequences of this temporal discontinuity
-would consist in the restart files created from the historical simulations (restart-tr.nc) 
-would likely not be useful to run scenarios.
-
----
-
-### 5. Run Model Batches
-
-- **Run all batches at once**:
-  ```bash
-  bp batch run -b /mnt/exacloud/your_folder/Alaska/tilename/ssp1_2_6_access_cm2__ssp1_2_6_split`
-  ```
-
-- **Run a single batch**:
-  Navigate to the batch folder and run:
-  ```bash
-  sbatch slurm_runner.sh
-  ```
-
----
-
-### 6. Monitor Execution
-
-Use `squeue` or `sacct` to monitor job progress:
-
-```bash
-squeue -u $USER
-sacct -j <job_id>
-python check_runs.py ssp1_2_6_access_cm2__ssp1_2_6_split
-```
-
-> An auxiliary monitoring script will be added to this repo soon.
-
----
-
-### 7. Merge Output
-
-Once all batch jobs are complete:
-
-```bash
-bp batch merge -b <tile_name>
-```
-
----
-
-### 8. Plotting Results
-
-Once all batches are merged, run the plotting script.
-
-```bash
-python ~/Circumpolar_TEM_aux_scripts/plot_nc_all_files.py full_path_your_tile/ssp1_2_6_access_cm2__ssp1_2_6_split/all_merged/
-```
-
----
 
 ### Next Scenario: ssp1_2_6_mri_esm2_0__ssp1_2_6
 
