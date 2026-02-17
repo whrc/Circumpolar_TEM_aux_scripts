@@ -2,10 +2,17 @@
 # 🧊 Circumpolar Run Work Plan
 
 ---
+## Install cluster setup
+```bash
+git clone https://github.com/whrc/Circumpolar_TEM_aux_scripts.git
+chmod +x cluster_install.sh
+./cluster_install.sh
+```
+
 ## Instruction on Step-by-Step Tile Run
 ### Initial Setup
 
-### 1. Copy A Tile 
+### 1. Copy a Tile 
 
    Navigate to  `/mnt/exacloud/<yourname>_woodwellclimate_org/`. 
    Copy a tile into this folder.
@@ -107,6 +114,25 @@ Once all batches are merged, run the plotting script.
 python ~/Circumpolar_TEM_aux_scripts/plot_nc_all_files.py /mnt/exacloud/<yourname>_woodwellclimate_org/<tile_id>_sc/<sspx_x_x_model_id>_split/all_merged/
 ```
 This will create a PDF file containing plots for all merged files. DONE!
+
+## Automation all the the above steps. This script has three modes: base, full, and sc
+
+```bash
+python  ~/Circumpolar_TEM_aux_scripts/automation_script.py -h
+python  ~/Circumpolar_TEM_aux_scripts/automation_script.py --mode base <tile_id>
+#save to log_file
+python  ~/Circumpolar_TEM_aux_scripts/automation_script.py --mode base <tile_id> > {log_file} 2>&1
+```
+
+### If you need to run mutiple tiles, make a file in `tiles/my_tiles.txt`, save tile list into that file
+```bash
+python  ~/Circumpolar_TEM_aux_scripts/automation_script.py run_tiles.py tiles/my_tiles.txt
+```
+
+## Run interactively inside the batch folder
+```bash
+/home/<yourname>_woodwellclimate_org/test/dvm-dos-tem/dvmdostem  -f config/config.js -l monitor  -p 100 -e 2000 -s 200 -t 124 -n 76
+```
 
 ---
 

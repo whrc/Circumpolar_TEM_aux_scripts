@@ -426,11 +426,11 @@ def main():
         print("[MODE] base — running base-scenario-only steps")
 
         # formerly-commented steps
-        pull_tile(tile_name)
-        run_gapfill(tile_name)
-        generate_scenarios(tile_name)
-        conform_runmask(tile_name, base_scenario_name)
-        remove_tile(tile_name)
+        #pull_tile(tile_name)
+        #run_gapfill(tile_name)
+        #generate_scenarios(tile_name)
+        #conform_runmask(tile_name, base_scenario_name)
+        #remove_tile(tile_name)
 
         # full pipeline uses your splitter to derive the base scenario path
         base_split_path = split_base_scenario(path_to_folder, tile_name, base_scenario_name)
@@ -489,8 +489,8 @@ def main():
     print_completion_status(path_to_folder, tile_name)
     
     # finalize by copying results to GCS
-    if not args.bucket_path:
-        finalize(path_to_folder, tile_name)
+    #if not args.bucket_path:
+    #    finalize(path_to_folder, tile_name)
 
 
 if __name__ == "__main__":
