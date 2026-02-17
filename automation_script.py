@@ -89,21 +89,59 @@ def remove_tile(tile_name):
     else:
         print(f"[INFO] Tile directory {tile_path} not found, skipping removal")
 
+
+def get_dvmdostem_path():
+    """Read dvmdostem path from `bp tem` output."""
+    try:
+        result = subprocess.run(
+            ["bp", "tem"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+        output = f"{result.stdout}\n{result.stderr}"
+        # Support both formats:
+        # 1) dvmdostempath=/opt/apps/dvm-dos-tem/
+        # 2) /path/to/dvm-dos-tem/dvm-dos-tem  (executable path)
+        match = re.search(r"dvmdostempath\s*=\s*([^\s]+)", output)
+        if match:
+            dvmdostem_path = match.group(1).strip().strip("\"'")
+            return dvmdostem_path.rstrip("/")
+
+        lines = [line.strip().strip("\"'") for line in output.splitlines() if line.strip()]
+        if not lines:
+            print("[ERROR] `bp tem` returned empty output")
+            return None
+
+        tem_path = lines[0]
+        if os.path.basename(tem_path) == "dvm-dos-tem":
+            return os.path.dirname(tem_path.rstrip("/"))
+        return tem_path.rstrip("/")
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Failed to run `bp tem`: {e}")
+        return None
+
 def conform_runmask(tile_name):
     """Run runmask.py to conform masks to available parameters for all scenarios."""
-    print("[RUNMASK] Conforming run masks to available parameters...")
-    
+    dvmdostem_path = get_dvmdostem_path()
+    if not dvmdostem_path:
+        print("[RUNMASK] Could not resolve dvmdostem path, skipping runmask conforming")
+        return
+
+    print(f"[RUNMASK] Using dvmdostem path: {dvmdostem_path}")
+
     # Set up environment with PYTHONPATH
     env = os.environ.copy()
-    dvm_scripts_path = "/opt/apps/dvm-dos-tem/scripts"
+    dvm_scripts_path = os.path.join(dvmdostem_path, "scripts")
     if "PYTHONPATH" in env:
         env["PYTHONPATH"] = f"{dvm_scripts_path}:{env['PYTHONPATH']}"
     else:
         env["PYTHONPATH"] = dvm_scripts_path
     
     # Parameters directory
-    params_dir = "/opt/apps/dvm-dos-tem/parameters/"
-    runmask_script = "/opt/apps/dvm-dos-tem/scripts/util/runmask.py"
+    params_dir = os.path.join(dvmdostem_path, "parameters")
+    runmask_script = os.path.join(dvmdostem_path, "scripts", "util", "runmask.py")
     
     # Find all scenario directories
     scenario_base_dir = f"{tile_name}_sc"
