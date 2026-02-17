@@ -34,8 +34,8 @@ bp init --basedir ${USER_HOME} --compile
 echo setup scripts and utils...
 mkdir old_tem && cd old_tem
 git clone https://github.com/uaf-arctic-eco-modeling/dvm-dos-tem.git
-cd dvm-dos-tem/
-git checkout regional_wetland
+cd dvm-dos-tem
+git checkout cbb3ba
 cd ~/
 cp -r old_tem/dvm-dos-tem/calibration dvm-dos-tem/.
 mkdir dvm-dos-tem/scripts/util
