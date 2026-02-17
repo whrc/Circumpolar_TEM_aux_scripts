@@ -89,9 +89,8 @@ def remove_tile(tile_name):
     else:
         print(f"[INFO] Tile directory {tile_path} not found, skipping removal")
 
-
 def get_dvmdostem_path():
-    """Read dvmdostem path from `bp tem` output."""
+    """Resolve dvmdostempath from `bp tem` output."""
     try:
         result = subprocess.run(
             ["bp", "tem"],
@@ -100,30 +99,36 @@ def get_dvmdostem_path():
             text=True,
             check=True,
         )
-        output = f"{result.stdout}\n{result.stderr}"
-        # Support both formats:
-        # 1) dvmdostempath=/opt/apps/dvm-dos-tem/
-        # 2) /path/to/dvm-dos-tem/dvm-dos-tem  (executable path)
-        match = re.search(r"dvmdostempath\s*=\s*([^\s]+)", output)
-        if match:
-            dvmdostem_path = match.group(1).strip().strip("\"'")
-            return dvmdostem_path.rstrip("/")
-
-        lines = [line.strip().strip("\"'") for line in output.splitlines() if line.strip()]
-        if not lines:
-            print("[ERROR] `bp tem` returned empty output")
-            return None
-
-        tem_path = lines[0]
-        if os.path.basename(tem_path) == "dvm-dos-tem":
-            return os.path.dirname(tem_path.rstrip("/"))
-        return tem_path.rstrip("/")
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] Failed to run `bp tem`: {e}")
+        print(f"[ERROR] stderr: {e.stderr.strip()}")
         return None
 
-def conform_runmask(tile_name):
-    """Run runmask.py to conform masks to available parameters for all scenarios."""
+    # `bp tem` can output either:
+    # 1) "dvmdostempath=/path/to/dvm-dos-tem"
+    # 2) "/path/to/dvm-dos-tem"
+    for line in result.stdout.splitlines():
+        cleaned = line.strip().strip('"').strip("'")
+        if not cleaned:
+            continue
+
+        if "dvmdostempath=" in cleaned:
+            cleaned = cleaned.split("dvmdostempath=", 1)[1].strip().strip('"').strip("'")
+
+        # Accept absolute/home-relative paths and verify expected scripts dir exists.
+        if cleaned.startswith("~"):
+            cleaned = os.path.expanduser(cleaned)
+        if cleaned.startswith("/"):
+            candidate = cleaned.rstrip("/")
+            if os.path.isdir(candidate) and os.path.isdir(os.path.join(candidate, "scripts")):
+                return candidate
+
+    print("[ERROR] Could not parse a valid dvm-dos-tem path from `bp tem` output.")
+    return None
+
+
+def conform_runmask(tile_name,base_scenario_name):
+    """Run runmask.py to conform masks to available parameters for a given scenarios."""
     dvmdostem_path = get_dvmdostem_path()
     if not dvmdostem_path:
         print("[RUNMASK] Could not resolve dvmdostem path, skipping runmask conforming")
@@ -149,38 +154,40 @@ def conform_runmask(tile_name):
         print(f"[WARNING] Scenario directory {scenario_base_dir} not found, skipping runmask")
         return
     
-    for scenario_dir in os.listdir(scenario_base_dir):
-        scenario_path = os.path.join(scenario_base_dir, scenario_dir)
-        if os.path.isdir(scenario_path) and not scenario_dir.endswith("_split"):
-            vegetation_file = os.path.join(scenario_path, "vegetation.nc")
-            runmask_file = os.path.join(scenario_path, "run-mask.nc")
-            
-            if os.path.exists(vegetation_file) and os.path.exists(runmask_file):
-                print(f"[RUNMASK] Processing scenario: {scenario_dir}")
-                cmd = [
-                    "python", runmask_script,
-                    "--conform-mask-to-available-params",
-                    params_dir,
-                    vegetation_file,
-                    runmask_file
-                ]
-                try:
-                    subprocess.run(cmd, env=env, check=True)
-                    
-                    # Replace original run-mask.nc with the filtered version
-                    filtered_runmask_file = os.path.join(scenario_path, "run-mask_cmtfilter.nc")
-                    if os.path.exists(filtered_runmask_file):
-                        print(f"[RUNMASK] Replacing run-mask.nc with filtered version for {scenario_dir}")
-                        os.remove(runmask_file)  # Remove original
-                        os.rename(filtered_runmask_file, runmask_file)  # Rename filtered to original name
-                        print(f"[RUNMASK] Successfully updated run-mask.nc for {scenario_dir}")
-                    else:
-                        print(f"[WARNING] Expected filtered file run-mask_cmtfilter.nc not found for {scenario_dir}")
-                        
-                except subprocess.CalledProcessError as e:
-                    print(f"[ERROR] Runmask failed for {scenario_dir}: {e}")
+    scenario_path = os.path.join(scenario_base_dir, base_scenario_name)
+    if not os.path.isdir(scenario_path):
+        print(f"[WARNING] Base scenario directory not found: {scenario_path}")
+        return
+
+    vegetation_file = os.path.join(scenario_path, "vegetation.nc")
+    runmask_file = os.path.join(scenario_path, "run-mask.nc")
+
+    if os.path.exists(vegetation_file) and os.path.exists(runmask_file):
+        print(f"[RUNMASK] Processing scenario: {base_scenario_name}")
+        cmd = [
+            "python", runmask_script,
+            "--conform-mask-to-available-params",
+            params_dir,
+            vegetation_file,
+            runmask_file
+        ]
+        try:
+            subprocess.run(cmd, env=env, check=True)
+
+            # Replace original run-mask.nc with the filtered version
+            filtered_runmask_file = os.path.join(scenario_path, "run-mask_cmtfilter.nc")
+            if os.path.exists(filtered_runmask_file):
+                print(f"[RUNMASK] Replacing run-mask.nc with filtered version for {base_scenario_name}")
+                os.remove(runmask_file)  # Remove original
+                os.rename(filtered_runmask_file, runmask_file)  # Rename filtered to original name
+                print(f"[RUNMASK] Successfully updated run-mask.nc for {base_scenario_name}")
             else:
-                print(f"[WARNING] Missing vegetation.nc or run-mask.nc in {scenario_dir}")
+                print(f"[WARNING] Expected filtered file run-mask_cmtfilter.nc not found for {base_scenario_name}")
+
+        except subprocess.CalledProcessError as e:
+            print(f"[ERROR] Runmask failed for {base_scenario_name}: {e}")
+    else:
+        print(f"[WARNING] Missing vegetation.nc or run-mask.nc in {base_scenario_name}")
     
     print("[RUNMASK] Completed runmask conforming")
 
@@ -398,7 +405,7 @@ def main():
         pull_tile(tile_name)
         run_gapfill(tile_name)
         generate_scenarios(tile_name)
-        conform_runmask(tile_name)
+        conform_runmask(tile_name, base_scenario_name)
         remove_tile(tile_name)
 
         # full pipeline uses your splitter to derive the base scenario path
@@ -422,7 +429,7 @@ def main():
         pull_tile(tile_name)
         run_gapfill(tile_name)
         generate_scenarios(tile_name)
-        conform_runmask(tile_name)
+        conform_runmask(tile_name, base_scenario_name)
         remove_tile(tile_name)
 
         # full pipeline uses your splitter to derive the base scenario path
