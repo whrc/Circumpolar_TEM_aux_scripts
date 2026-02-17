@@ -62,6 +62,9 @@ def plot_variable(nc_file, variable_name):
                 fill_value = nc.variables[variable_name]._FillValue if hasattr(nc.variables[variable_name], "_FillValue") else np.nan
                 var_data = np.where(var_data == fill_value, np.nan, var_data)
             
+            # Also treat common sentinel no-data values as invalid
+            var_data = np.where(np.isclose(var_data, -9999.0), np.nan, var_data)
+
             # Check if dataset has any valid data
             if not np.any(np.isfinite(var_data)):
                 print(f"⚠️ Warning: {variable_name} has no valid data (all values are masked/NaN). Skipping.")
