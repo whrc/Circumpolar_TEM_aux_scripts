@@ -20,6 +20,7 @@ fi
 echo Installing additional dependencies...
 pip install --break-system-packages xarray netcdf4 h5netcdf
 pip install commentjson --break-system-packages
+pip install matplotlib --break-system-packages
 
 echo install batch-processing
 pipx install ~/batch-processing/ --editable 
@@ -27,9 +28,9 @@ pipx ensurepath
 pipx inject batch-processing h5py
 bp --help
 
-echo setting tem folder and compiling...
+echo setting tem folder and no compiling...
 USER_HOME=${HOME}
-bp init --basedir ${USER_HOME} --compile
+bp init --basedir ${USER_HOME} 
 
 echo setup scripts and utils...
 mkdir old_tem && cd old_tem
@@ -38,8 +39,9 @@ cd dvm-dos-tem
 git checkout cbb3ba
 cd ~/
 cp -r old_tem/dvm-dos-tem/calibration dvm-dos-tem/.
-mkdir dvm-dos-tem/scripts/util
+mkdir dvm-dos-tem/scripts
 cp -r  old_tem/dvm-dos-tem/scripts/util dvm-dos-tem/scripts/.
 
+echo NOTE: manually compile the dvmdostem with lustre/Maefile.
 echo NOTE: First time istall requires re-login and re-run this script again
 echo Completed.
