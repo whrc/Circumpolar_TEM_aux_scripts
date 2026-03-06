@@ -115,6 +115,9 @@ python ../count_files_per_tile.py Alaska/ssp5_8_5_mri_esm2_0/
 # Redirect output and errors to a log file
 python merge.py ~/Circumpolar_TEM_aux_scripts/merge/Alaska/ ssp5_8_5_mri_esm2_0 --temdir ~/Circumpolar_TEM_aux_scripts/merge/ --run-stage sc > report_ak_can_tiles_0111_1.log 2>&1
 
+# Step 4.1: For monthly data merging in parallel is more efficient. 
+python merge_parallel.py ~/Circumpolar_TEM_aux_scripts/merge/Circumpolar ssp1_2_6_mri_esm2_0  --temdir ~/Circumpolar_TEM_aux_scripts/merge --run-stage tr  --no-yearsynth -j 15
+
 # Step 5: Plot all merged output files
 # This visualizes the merged NetCDF files
 python ../visualization/plot_nc_all_files.py Alaska/merged/

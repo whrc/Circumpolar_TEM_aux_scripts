@@ -170,7 +170,8 @@ else:
     print(os.path.join(temdir, 'output_spec.csv'), 'does not exist')
     sys.exit()
 
-varlist=['EET', 'RECO', 'SNOWTHICK', 'AVLN', 'VEGC', 'ALD', 'GPP', 'SHLWC']
+#varlist=['EET', 'RECO', 'SNOWTHICK', 'AVLN', 'VEGC', 'ALD', 'GPP', 'SHLWC']
+varlist=['RECO', 'GPP']
 print('varlist:',varlist)
 
 ## Variable loop 
@@ -210,9 +211,14 @@ for var in varlist:
             # Read in temporal resolution from filename
             tempres = os.path.basename(var_file).split('_')[1]
         
-            
+            # Monthly + no yearsynth: merge as-is (no aggregation, no compartment/PFT/layer synthesis)
+            merge_monthly_as_is = (tempres == 'monthly') & (yearsynth == False)
+            if merge_monthly_as_is:
+                print(f'    Merging monthly data as-is (no synthesis)')
+
+            if ovl is not None and var in ovl['Name'].values and not merge_monthly_as_is:
             # Apply synthesis operations if output spec is available
-            if ovl is not None and var in ovl['Name'].values:
+            #if ovl is not None and var in ovl['Name'].values:
                 var_spec = ovl[ovl['Name'] == var].iloc[0]
                 
                 # Determine aggregation operation based on units
@@ -223,7 +229,11 @@ for var in varlist:
                     default_op = 'sum'  # Flux variables
                 else:
                     default_op = 'mean'  # State variables
-                
+                print('units',units)
+                print('temres:',tempres)
+                print('default_op:',default_op)
+                print('yearsynth',yearsynth)
+                sys.exit()
                 # Monthly to yearly synthesis
                 if (tempres == 'monthly') & (yearsynth == True):
                     # Check if both monthly and yearly are available in spec
