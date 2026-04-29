@@ -3,7 +3,8 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from netCDF4 import Dataset
-from matplotlib.backends.backend_pdf import PdfPages
+import argparse
+
 
 def extract_variable_name(filename):
     """Extracts the variable name from the filename before the first underscore `_`."""
@@ -12,7 +13,7 @@ def extract_variable_name(filename):
         return parts[0]  # First part before `_`
     return None
 
-def plot_variable(nc_file, variable_name):
+def plot_variable(nc_file, variable_name):#, minimum, maximum):
     """
     Reads the specified variable from a NetCDF file, calculates mean over time,
     and returns a Matplotlib figure.
@@ -63,9 +64,6 @@ def plot_variable(nc_file, variable_name):
                 fill_value = nc.variables[variable_name]._FillValue if hasattr(nc.variables[variable_name], "_FillValue") else np.nan
                 var_data = np.where(var_data == fill_value, np.nan, var_data)
             
-            # Also treat common sentinel no-data values as invalid
-            var_data = np.where(np.isclose(var_data, -9999.0), np.nan, var_data)
-
             # Check if dataset has any valid data
             if not np.any(np.isfinite(var_data)):
                 print(f"⚠️ Warning: {variable_name} has no valid data (all values are masked/NaN). Skipping.")
@@ -119,7 +117,7 @@ def plot_variable(nc_file, variable_name):
             layer_suffix = " (Layer=0)" if layer_extracted else ""
 
             # Plot var_data at first time step
-            im0 = axes[0].imshow(np.flipud(var_data[0,:,:].T), cmap="viridis", origin="lower", aspect="auto")
+            im0 = axes[0].imshow(np.flipud(var_data[0,:,:].T), cmap="viridis", origin="lower", aspect="auto")#, vmin=minimum, vmax=maximum)
             axes[0].set_title(f"{variable_name} - First Year{layer_suffix}")
             axes[0].set_xlabel("X")
             axes[0].set_ylabel("Y")
@@ -128,7 +126,7 @@ def plot_variable(nc_file, variable_name):
             fig.colorbar(im0, ax=axes[0], label=f"{variable_name} ({units})" if units else variable_name)
 
             # Plot var_data at last time step
-            imN = axes[1].imshow(np.flipud(var_data[-1,:,:].T), cmap="viridis", origin="lower", aspect="auto")
+            imN = axes[1].imshow(np.flipud(var_data[-1,:,:].T), cmap="viridis", origin="lower", aspect="auto")#, vmin=minimum, vmax=maximum)
             axes[1].set_title(f"{variable_name} - Last Year{layer_suffix}")
             axes[1].set_xlabel("X")
             axes[1].set_ylabel("Y")
@@ -152,7 +150,7 @@ def plot_variable(nc_file, variable_name):
         print(f"Error processing {nc_file}: {e}")
         return None
 
-def generate_pdf(folder_path, output_pdf="summary_plots.pdf"):
+def plot_single_variable(folder_path, single_variable, output_path):# minimum, maximum, output_path):
     """
     Loops through all NetCDF files in the folder, extracts variables, generates plots,
     and saves them in a multi-page PDF.
@@ -161,26 +159,34 @@ def generate_pdf(folder_path, output_pdf="summary_plots.pdf"):
     if not nc_files:
         print("No valid NetCDF files found in the specified folder.")
         return
-    new_file_path = os.path.join(folder_path, output_pdf)
     
-    with PdfPages(new_file_path) as pdf:
-        for nc_file in nc_files:
-            nc_file_path = os.path.join(folder_path, nc_file)
-            variable_name = extract_variable_name(nc_file)
+    new_file_path = os.path.join(output_path, single_variable)
+    
+    for nc_file in nc_files:
+        nc_file_path = os.path.join(folder_path, nc_file)
+        variable_name = extract_variable_name(nc_file)
 
-            if variable_name:
-                fig = plot_variable(nc_file_path, variable_name)
+        if variable_name: #exists
+            if variable_name == single_variable: #matches the variable we wish to plot
+                fig = plot_variable(nc_file_path, variable_name)#, minimum, maximum)
                 if fig:
-                    pdf.savefig(fig)  # Save the figure to PDF
+                    plt.savefig(new_file_path+'.png')  # Save the figure to png
                     plt.close(fig)
-                    print(f"Added plot for {variable_name} from {nc_file}")
-
-    print(f"Plots saved in {output_pdf}")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python plot_all_nc_files.py <folder_path>")
-        sys.exit(1)
+    
+    parser = argparse.ArgumentParser(description='Plot a single variable for a merged tile.')
+    parser.add_argument('path', type=str, help='Path to folder containing ALL merged variables')
+    parser.add_argument('--var', type=str, help='Variable name (as given in output file, e.g. INGPP for INGPP_monthly_eq.nc)')
+    #parser.add_argument('--min', type=float, help='Minimum value for map')
+    #parser.add_argument('--max', type=float, help='Maximum value for map')
+    parser.add_argument('--out', type=str, nargs='?', help='Path to the resulting .png')
+    args = parser.parse_args()
+    
+    if args.path and args.var and args.out:
+        plot_single_variable(args.path, args.var, args.out)# args.min, args.max, args.out)
+    else:
+        print("Not all arguments are correctly specified...")
+    
+    
 
-    folder_path = sys.argv[1]
-    generate_pdf(folder_path)
