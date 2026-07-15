@@ -5,6 +5,33 @@ import matplotlib.pyplot as plt
 from netCDF4 import Dataset
 from matplotlib.backends.backend_pdf import PdfPages
 
+# NetCDF row/column dimension names (merged WIEMIP often uses Y/X, not y/x).
+_ROW_DIM_CANDIDATES = ("y", "Y", "latitude", "lat")
+_COL_DIM_CANDIDATES = ("x", "X", "longitude", "lon")
+
+
+def _resolve_row_col_dims(nc, variable_name):
+    """Return (row_dim_name, col_dim_name) for the variable's horizontal grid."""
+    var_dims = nc.variables[variable_name].dimensions
+    for row in _ROW_DIM_CANDIDATES:
+        if row not in var_dims:
+            continue
+        for col in _COL_DIM_CANDIDATES:
+            if col in var_dims:
+                return row, col
+    raise KeyError(
+        f"No recognized row/col dimensions for variable {variable_name!r}. "
+        f"Variable dims: {var_dims!s}, file dimensions: {tuple(nc.dimensions.keys())}"
+    )
+
+
+def _find_layer_dim_name(var_dims):
+    for name in ("layer", "Layer"):
+        if name in var_dims:
+            return name
+    return None
+
+
 def extract_variable_name(filename):
     """Extracts the variable name from the filename before the first underscore `_`."""
     parts = filename.split("_")
@@ -24,20 +51,26 @@ def plot_variable(nc_file, variable_name):
                 print(f"Variable {variable_name} not found in {nc_file}")
                 return None
 
-            # Extract dimensions
+            # Extract dimensions (support y/x, Y/X, lat/lon, etc.)
             time_dim = "time" if "time" in nc.dimensions else None
-            Y = nc.dimensions['y'].size
-            X = nc.dimensions['x'].size
+            if time_dim is None:
+                print(f"No 'time' dimension in {nc_file}; skipping.")
+                return None
+
+            row_dim, col_dim = _resolve_row_col_dims(nc, variable_name)
+            n_row = nc.dimensions[row_dim].size
+            n_col = nc.dimensions[col_dim].size
 
             # Extract data
             var_data = nc.variables[variable_name][:]
             
             # Handle 4D data with layer dimension - extract layer 0
             layer_extracted = False
-            if 'layer' in nc.dimensions:
-                var_dims = nc.variables[variable_name].dimensions
-                if len(var_dims) == 4 and 'layer' in var_dims:
-                    layer_idx = var_dims.index('layer')
+            var_dims = nc.variables[variable_name].dimensions
+            layer_dim_name = _find_layer_dim_name(var_dims)
+            if layer_dim_name is not None:
+                if len(var_dims) == 4 and layer_dim_name in var_dims:
+                    layer_idx = var_dims.index(layer_dim_name)
                     print(f"Detected 4D data with dimensions: {var_dims}")
                     print(f"Extracting layer index 0 from position {layer_idx}")
                     
@@ -70,7 +103,7 @@ def plot_variable(nc_file, variable_name):
                 print(f"⚠️ Warning: {variable_name} has no valid data (all values are masked/NaN). Skipping.")
                 return None
 
-            print('time_dim:',time_dim)
+            print("time_dim:", time_dim)
             t_size = nc.dimensions[time_dim].size
             time_steps = np.arange(t_size)
             print(f"Time dimension size: {t_size}")
@@ -82,8 +115,8 @@ def plot_variable(nc_file, variable_name):
                 print(f"Detected monthly data: {t_size} timesteps = {years} years")
                 print("Applying annual averaging to reduce plot crowding...")
                 
-                # Reshape: (t_size, Y, X) → (years, 12, Y, X)
-                var_data = var_data.reshape(years, 12, Y, X)
+                # Reshape: (t_size, row, col) → (years, 12, row, col)
+                var_data = var_data.reshape(years, 12, n_row, n_col)
                 
                 # Compute annual mean along the monthly axis
                 var_data = np.nanmean(var_data, axis=1)  # Shape: (years, Y, X)
@@ -93,7 +126,7 @@ def plot_variable(nc_file, variable_name):
             elif t_size == 12000:
                 print("Detected special case: 12000 timesteps, applying custom averaging...")
                 # Keep the original logic for 12000 timesteps if it's different
-                var_data = var_data.reshape(1000, 12, Y, X)
+                var_data = var_data.reshape(1000, 12, n_row, n_col)
                 var_data = np.nanmean(var_data, axis=1)
                 time_steps = np.arange(var_data.shape[0])
                 print(f"✅ Reduced to {var_data.shape[0]} timesteps")
@@ -151,10 +184,10 @@ def plot_variable(nc_file, variable_name):
         print(f"Error processing {nc_file}: {e}")
         return None
 
-def generate_pdf(folder_path, output_pdf="summary_plots.pdf"):
+def generate_pdf(folder_path, output_pdf="summary_plots.pdf", dpi_png=150):
     """
     Loops through all NetCDF files in the folder, extracts variables, generates plots,
-    and saves them in a multi-page PDF.
+    and saves them in a multi-page PDF and one PNG per variable file.
     """
     nc_files = sorted([f for f in os.listdir(folder_path) if f.endswith(".nc") and f[0].isupper()])  # Only files starting with a capital letter, sorted alphabetically
     if not nc_files:
@@ -171,10 +204,14 @@ def generate_pdf(folder_path, output_pdf="summary_plots.pdf"):
                 fig = plot_variable(nc_file_path, variable_name)
                 if fig:
                     pdf.savefig(fig)  # Save the figure to PDF
+                    stem, _ = os.path.splitext(nc_file)
+                    png_path = os.path.join(folder_path, f"{stem}_summary.png")
+                    fig.savefig(png_path, dpi=dpi_png, bbox_inches="tight")
+                    print(f"Saved PNG: {png_path}")
                     plt.close(fig)
                     print(f"Added plot for {variable_name} from {nc_file}")
 
-    print(f"Plots saved in {output_pdf}")
+    print(f"Plots saved in {new_file_path} and matching *_summary.png files in the same folder.")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
