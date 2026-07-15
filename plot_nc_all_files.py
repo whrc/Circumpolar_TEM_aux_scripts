@@ -12,175 +12,218 @@ def extract_variable_name(filename):
         return parts[0]  # First part before `_`
     return None
 
+def _clean_slice(data, fill_value):
+    """Convert a raw NetCDF slice to a float array with NaN for invalid cells.
+
+    Only the declared fill value and the common -9999 sentinel are masked out.
+    Values < 0 are intentionally kept because many variables (e.g. soil
+    temperatures) are physically negative.
+    """
+    if isinstance(data, np.ma.MaskedArray):
+        data = data.filled(np.nan).astype(float)
+    else:
+        data = np.where(data == fill_value, np.nan, data.astype(float))
+    data = np.where(np.isclose(data, -9999.0), np.nan, data)
+    return data
+
+
+def _read_spatial_slice(var, t, extra_dim_idx):
+    """Return a (Y, X) array for timestep t, collapsing extra dim (layer/pft) at index 0."""
+    if extra_dim_idx is not None:
+        return var[t, 0, :, :]   # (time, extra, y, x) layout assumed
+    return var[t, :, :]
+
+
+
 def plot_variable(nc_file, variable_name):
     """
-    Reads the specified variable from a NetCDF file, calculates mean over time,
-    and returns a Matplotlib figure.
+    Reads the specified variable from a NetCDF file in a memory-efficient way
+    (one timestep or one year at a time) and returns a Matplotlib figure.
     """
     try:
         with Dataset(nc_file, "r") as nc:
-            # Check if variable exists
             if variable_name not in nc.variables:
                 print(f"Variable {variable_name} not found in {nc_file}")
                 return None
 
-            # Extract dimensions
+            var = nc.variables[variable_name]
+            var_dims = var.dimensions
+            fill_value = getattr(var, "_FillValue", -9999.0)
+            units = getattr(var, "units", "")
+
             time_dim = "time" if "time" in nc.dimensions else None
-            Y = nc.dimensions['y'].size
-            X = nc.dimensions['x'].size
+            t_size = nc.dimensions[time_dim].size
+            print(f"time_dim: {time_dim}\nTime dimension size: {t_size}")
 
-            # Extract data
-            var_data = nc.variables[variable_name][:]
-            var_data = np.ma.masked_less(var_data, 0.0)
-            
-            # Handle 4D data with layer dimension - extract layer 0
-            layer_extracted = False
-            if 'layer' in nc.dimensions:
-                var_dims = nc.variables[variable_name].dimensions
-                if len(var_dims) == 4 and 'layer' in var_dims:
-                    layer_idx = var_dims.index('layer')
-                    print(f"Detected 4D data with dimensions: {var_dims}")
-                    print(f"Extracting layer index 0 from position {layer_idx}")
-                    
-                    # Extract layer 0 based on its position in dimensions
-                    if layer_idx == 1:  # (time, layer, y, x)
-                        var_data = var_data[:, 0, :, :]
-                    elif layer_idx == 0:  # (layer, time, y, x) - unlikely but handle it
-                        var_data = var_data[0, :, :, :]
-                    elif layer_idx == 2:  # (time, y, layer, x) - unlikely but handle it
-                        var_data = var_data[:, :, 0, :]
-                    elif layer_idx == 3:  # (time, y, x, layer) - unlikely but handle it
-                        var_data = var_data[:, :, :, 0]
-                    
-                    layer_extracted = True
-                    print(f"✅ Extracted layer 0, new shape: {var_data.shape}")
-            
-            # Handle masked arrays properly - convert masked values to NaN
-            if isinstance(var_data, np.ma.MaskedArray):
-                var_data = np.ma.filled(var_data, np.nan)
+            # Detect extra dimension (layer or pft) – always at index 1 in our files
+            extra_dim = next((d for d in ("layer", "pft") if d in var_dims), None)
+            extra_dim_idx = 1 if extra_dim else None
+            layer_suffix = f" ({extra_dim}=0)" if extra_dim else ""
+            if extra_dim:
+                print(f"Detected 4D data with dimensions: {var_dims} — using {extra_dim} index 0")
+
+            # --- spatial maps ---
+            # For monthly data: average the first/last 12 months into annual maps.
+            # For yearly data: use the first/last timestep directly.
+            is_monthly = t_size > 500 and t_size % 12 == 0
+            if is_monthly:
+                first_slices = np.stack(
+                    [_clean_slice(_read_spatial_slice(var, m, extra_dim_idx), fill_value)
+                     for m in range(12)],
+                    axis=0,
+                )
+                last_slices = np.stack(
+                    [_clean_slice(_read_spatial_slice(var, t_size - 12 + m, extra_dim_idx), fill_value)
+                     for m in range(12)],
+                    axis=0,
+                )
+                first_map = np.nanmean(first_slices, axis=0)
+                last_map  = np.nanmean(last_slices,  axis=0)
             else:
-                # For non-masked arrays, replace fill values with NaN
-                fill_value = nc.variables[variable_name]._FillValue if hasattr(nc.variables[variable_name], "_FillValue") else np.nan
-                var_data = np.where(var_data == fill_value, np.nan, var_data)
-            
-            # Also treat common sentinel no-data values as invalid
-            var_data = np.where(np.isclose(var_data, -9999.0), np.nan, var_data)
+                first_map = _clean_slice(_read_spatial_slice(var, 0,  extra_dim_idx), fill_value)
+                last_map  = _clean_slice(_read_spatial_slice(var, -1, extra_dim_idx), fill_value)
 
-            # Check if dataset has any valid data
-            if not np.any(np.isfinite(var_data)):
-                print(f"⚠️ Warning: {variable_name} has no valid data (all values are masked/NaN). Skipping.")
+            if not np.any(np.isfinite(first_map)):
+                print(f"⚠️ Warning: {variable_name} has no valid data. Skipping.")
                 return None
 
-            print('time_dim:',time_dim)
-            t_size = nc.dimensions[time_dim].size
-            time_steps = np.arange(t_size)
-            print(f"Time dimension size: {t_size}")
-            
-            # Check if this is monthly data that would benefit from annual averaging
-            # Monthly data typically has > 500 timesteps and is divisible by 12
+            # --- time series: row-by-row accumulation ---
+            # Reading one y-row at a time (all timesteps for that row) aligns with
+            # the (T_chunk, extra, 1, X) chunk layout, keeping peak RAM tiny and
+            # avoiding repeated full-axis decompression.
+            Y = nc.dimensions["y"].size
+            X = nc.dimensions["x"].size
+
+            sum_t   = np.zeros(t_size)   # accumulate spatial sum per timestep
+            sum_t2  = np.zeros(t_size)   # for std: sum of squares
+            cnt_t   = np.zeros(t_size, dtype=np.int64)
+
+            print(f"Building time series (row-by-row, {Y} rows)...")
+            for yi in range(Y):
+                if extra_dim_idx is not None:
+                    row = var[:, 0, yi, :]   # (time, X)
+                else:
+                    row = var[:, yi, :]       # (time, X)
+                row = _clean_slice(row, fill_value)  # (time, X) float64
+                valid = ~np.isnan(row)
+                sum_t  += np.where(valid, row, 0.0).sum(axis=-1)
+                sum_t2 += np.where(valid, row ** 2, 0.0).sum(axis=-1)
+                cnt_t  += valid.sum(axis=-1)
+
+            with np.errstate(invalid="ignore", divide="ignore"):
+                mean_t = np.where(cnt_t > 0, sum_t / cnt_t, np.nan)
+                # population std: sqrt(E[X²] - E[X]²)
+                std_t  = np.where(cnt_t > 0,
+                                  np.sqrt(np.maximum(0, sum_t2 / cnt_t - mean_t ** 2)),
+                                  np.nan)
+
             if t_size > 500 and t_size % 12 == 0:
                 years = t_size // 12
                 print(f"Detected monthly data: {t_size} timesteps = {years} years")
-                print("Applying annual averaging to reduce plot crowding...")
-                
-                # Reshape: (t_size, Y, X) → (years, 12, Y, X)
-                var_data = var_data.reshape(years, 12, Y, X)
-                
-                # Compute annual mean along the monthly axis
-                var_data = np.nanmean(var_data, axis=1)  # Shape: (years, Y, X)
-                time_steps = np.arange(var_data.shape[0])
-                
-                print(f"✅ Reduced to {var_data.shape[0]} annual timesteps")
-            elif t_size == 12000:
-                print("Detected special case: 12000 timesteps, applying custom averaging...")
-                # Keep the original logic for 12000 timesteps if it's different
-                var_data = var_data.reshape(1000, 12, Y, X)
-                var_data = np.nanmean(var_data, axis=1)
-                time_steps = np.arange(var_data.shape[0])
-                print(f"✅ Reduced to {var_data.shape[0]} timesteps")
-
-            # Compute mean var_data over X and Y for each time step
-            mean_var_data = np.nanmean(var_data, axis=(1, 2))  # Shape: (time,)
-            std_var_data = np.nanstd(var_data, axis=(1, 2))  # Standard deviation for shading
-            
-            # Determine time label based on averaging applied
-            original_t_size = nc.dimensions[time_dim].size
-            time_label = "Time (years)"
-            averaging_info = ""
-            if original_t_size > 500 and original_t_size % 12 == 0:
+                mean_var_data = np.nanmean(mean_t.reshape(years, 12), axis=1)
+                std_var_data  = np.nanmean(std_t.reshape(years, 12),  axis=1)
+                time_steps    = np.arange(years)
                 averaging_info = " (Annual Avg)"
-            elif original_t_size == 12000:
-                averaging_info = " (Averaged)"
-            
-            # Plot
-            fig, axes = plt.subplots(1, 3, figsize=(12, 5))
+                print(f"✅ Reduced to {years} annual timesteps")
+            else:
+                mean_var_data = mean_t
+                std_var_data  = std_t
+                time_steps    = np.arange(t_size)
+                averaging_info = ""
 
-            # Add layer indicator to titles if layer was extracted
-            layer_suffix = " (Layer=0)" if layer_extracted else ""
+            # --- build figure ---
+            fig, axes = plt.subplots(1, 3, figsize=(14, 5))
 
-            # Plot var_data at first time step
-            im0 = axes[0].imshow(np.flipud(var_data[0,:,:].T), cmap="viridis", origin="lower", aspect="auto")
-            axes[0].set_title(f"{variable_name} - First Year{layer_suffix}")
-            axes[0].set_xlabel("X")
-            axes[0].set_ylabel("Y")
-            # Get units from variable if available
-            units = getattr(nc.variables[variable_name], 'units', '')
-            fig.colorbar(im0, ax=axes[0], label=f"{variable_name} ({units})" if units else variable_name)
+            # Shared colour scale so first/last maps are directly comparable
+            all_vals = np.concatenate([first_map[np.isfinite(first_map)],
+                                       last_map[np.isfinite(last_map)]])
+            vmin = float(np.nanmin(all_vals)) if all_vals.size else 0
+            vmax = float(np.nanmax(all_vals)) if all_vals.size else 1
+            if vmin == vmax:
+                vmax = vmin + 1  # avoid degenerate range
 
-            # Plot var_data at last time step
-            imN = axes[1].imshow(np.flipud(var_data[-1,:,:].T), cmap="viridis", origin="lower", aspect="auto")
-            axes[1].set_title(f"{variable_name} - Last Year{layer_suffix}")
-            axes[1].set_xlabel("X")
-            axes[1].set_ylabel("Y")
-            fig.colorbar(imN, ax=axes[1], label=f"{variable_name} ({units})" if units else variable_name)
+            def _scatter_map(ax, data, title):
+                ys, xs = np.where(np.isfinite(data))
+                vals = data[ys, xs]
+                sc = ax.scatter(xs, ys, c=vals, cmap="viridis",
+                                vmin=vmin, vmax=vmax,
+                                s=6, linewidths=0, rasterized=True)
+                ax.set_facecolor("lightgray")
+                ax.set_xlim(0, data.shape[1])
+                ax.set_ylim(0, data.shape[0])
+                ax.set_title(title)
+                ax.set_xlabel("X")
+                ax.set_ylabel("Y")
+                fig.colorbar(sc, ax=ax,
+                             label=f"{variable_name} ({units})" if units else variable_name)
+
+            _scatter_map(axes[0], first_map,
+                         f"{variable_name} - First Year{layer_suffix}")
+            _scatter_map(axes[1], last_map,
+                         f"{variable_name} - Last Year{layer_suffix}")
 
             axes[2].plot(time_steps, mean_var_data, color="b", label=f"Mean {variable_name}")
-            axes[2].fill_between(time_steps, mean_var_data - std_var_data, mean_var_data + std_var_data, color="b", alpha=0.2, label="±1 Std Dev")
-
-            # Labels and titles
-            axes[2].set_xlabel(time_label)
+            axes[2].fill_between(
+                time_steps,
+                mean_var_data - std_var_data,
+                mean_var_data + std_var_data,
+                color="b", alpha=0.2, label="±1 Std Dev",
+            )
+            axes[2].set_xlabel("Time (years)")
             axes[2].set_ylabel(f"{variable_name} ({units})" if units else variable_name)
             axes[2].set_title(f"Mean {variable_name} Over Time{averaging_info}")
             axes[2].legend()
 
-
             plt.tight_layout()
-
             return fig
 
     except Exception as e:
         print(f"Error processing {nc_file}: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
-def generate_pdf(folder_path, output_pdf="summary_plots.pdf"):
+def generate_pdf(folder_path, output_pdf="summary_plots.pdf", single_file=None):
     """
-    Loops through all NetCDF files in the folder, extracts variables, generates plots,
-    and saves them in a multi-page PDF.
+    Loops through all NetCDF files in the folder (or just single_file if given),
+    extracts variables, generates plots, and saves them in a multi-page PDF.
     """
-    nc_files = sorted([f for f in os.listdir(folder_path) if f.endswith(".nc") and f[0].isupper()])  # Only files starting with a capital letter, sorted alphabetically
-    if not nc_files:
-        print("No valid NetCDF files found in the specified folder.")
-        return
+    if single_file:
+        if not single_file.endswith(".nc"):
+            print(f"Error: '{single_file}' does not look like a NetCDF file.")
+            return
+        nc_files = [single_file]
+        output_pdf = single_file.replace(".nc", ".pdf")
+    else:
+        nc_files = sorted([f for f in os.listdir(folder_path) if f.endswith(".nc") and f[0].isupper()])
+        if not nc_files:
+            print("No valid NetCDF files found in the specified folder.")
+            return
+
     new_file_path = os.path.join(folder_path, output_pdf)
-    
+
     with PdfPages(new_file_path) as pdf:
         for nc_file in nc_files:
             nc_file_path = os.path.join(folder_path, nc_file)
+            if not os.path.isfile(nc_file_path):
+                print(f"File not found: {nc_file_path}")
+                continue
             variable_name = extract_variable_name(nc_file)
 
             if variable_name:
                 fig = plot_variable(nc_file_path, variable_name)
                 if fig:
-                    pdf.savefig(fig)  # Save the figure to PDF
+                    pdf.savefig(fig)
                     plt.close(fig)
                     print(f"Added plot for {variable_name} from {nc_file}")
 
-    print(f"Plots saved in {output_pdf}")
+    print(f"Plots saved in {new_file_path}")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python plot_all_nc_files.py <folder_path>")
+    if len(sys.argv) not in (2, 3):
+        print("Usage: python plot_nc_all_files.py <folder_path> [filename.nc]")
         sys.exit(1)
 
     folder_path = sys.argv[1]
-    generate_pdf(folder_path)
+    single_file = sys.argv[2] if len(sys.argv) == 3 else None
+    generate_pdf(folder_path, single_file=single_file)
