@@ -35,6 +35,22 @@ def get_runtime_stats(nc_file):
         return None, None
 
 
+def check_for_segfault(base_folder, batch_name):
+    """Check if the batch's .err log contains a segmentation fault."""
+    try:
+        if "_" in batch_name:
+            batch_num = batch_name.split("_", 1)[1]
+            err_file_path = os.path.join(base_folder, "logs", f"batch-{batch_num}.err")
+            if os.path.exists(err_file_path):
+                with open(err_file_path, "r", errors="replace") as f:
+                    content = f.read().lower()
+                    if "segmentation fault" in content or "segfault" in content:
+                        return True
+    except Exception as e:
+        pass
+    return False
+
+
 def check_run_status(mask_file_path, nc_file):
     """
     Print per-batch status for a started run and return counts.
@@ -100,6 +116,7 @@ if __name__ == "__main__":
     failed_batches = []
     batches_with_fail = 0
     batches_with_timeout = 0
+    batches_with_segfault = 0
 
     for batch_name in batch_folders:
         batch_folder = os.path.join(base_folder, batch_name, "output")
@@ -113,7 +130,23 @@ if __name__ == "__main__":
         n = count_run_ones(mask_file_path)
         total_n += n
 
+        has_segfault = check_for_segfault(base_folder, batch_name)
+        if has_segfault:
+            batches_with_segfault += 1
+
         if not os.path.exists(nc_file_path):
+            if has_segfault:
+                started_batches += 1
+                failed_batches.append(
+                    {
+                        "batch": batch_name,
+                        "success": 0,
+                        "active": n,
+                        "fail": 0,
+                        "timeout": 0,
+                        "reason": "segmentation fault (no run_status.nc)",
+                    }
+                )
             continue
 
         started_batches += 1
@@ -150,13 +183,15 @@ if __name__ == "__main__":
                 else max(max_runtime, batch_max_runtime)
             )
 
-        if fail > 0 or timeout > 0 or m < n_active:
+        if fail > 0 or timeout > 0 or m < n_active or has_segfault:
             reasons = []
+            if has_segfault:
+                reasons.append("segmentation fault")
             if fail > 0:
                 reasons.append(f"{fail} failed cell(s)")
             if timeout > 0:
                 reasons.append(f"{timeout} timeout cell(s)")
-            if m < n_active and fail == 0 and timeout == 0:
+            if m < n_active:
                 reasons.append(f"incomplete ({m}/{n_active} success)")
             failed_batches.append(
                 {
@@ -186,13 +221,14 @@ if __name__ == "__main__":
                     f"Max total runtime:  {max_runtime:.2f} seconds"
                     f" ({max_runtime_min:.2f} min)"
                 )
-        if batches_with_fail > 0 or batches_with_timeout > 0:
+        if batches_with_fail > 0 or batches_with_timeout > 0 or batches_with_segfault > 0:
             print(
                 f"Batches with run_status -100 (fail): {batches_with_fail};"
-                f" -5 (timeout): {batches_with_timeout}"
+                f" -5 (timeout): {batches_with_timeout};"
+                f" segmentation faults: {batches_with_segfault}"
             )
         elif started_batches > 0:
-            print("No timeout (-5) or failed (-100) cells found.")
+            print("No timeout (-5), failed (-100) cells, or segmentation faults found.")
     else:
         print("\nNo valid data found for processing.")
 
